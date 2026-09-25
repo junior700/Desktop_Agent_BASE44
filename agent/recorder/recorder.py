@@ -19,8 +19,8 @@ Duplo clique: 2 cliques no mesmo ponto (tolerância 4px) em menos de
 double_click_window_ms, botão esquerdo.
 
 TECLAS (conforme diretriz do usuário):
-    F12 -> INICIA a gravação de cliques
-    F10 -> ENCERRA a gravação e finaliza
+    F12 -> INICIA a gravação de cliques (e MINIMIZA esta janela)
+    F10 -> ENCERRA a gravação e finaliza (e RESTAURA esta janela)
 
 Fluxo: arm() instala os listeners (estado "armado"); F12 liga a captura;
 F10 desliga e encerra. ESC 3x dispara a emergência global a qualquer momento.
@@ -34,11 +34,49 @@ import time
 from agent.config import AgentConfig
 
 
+# ------------------------------------------------------------------
+# Controle da janela do console (Windows).
+# F12 -> minimizar a janela do script (nao atrapalha a gravacao)
+# F10 -> restaurar a janela no fim
+# ------------------------------------------------------------------
+SW_MINIMIZE = 6
+SW_RESTORE = 9
+
+
+def minimize_console() -> None:
+    """Minimiza a janela do console atual (nao faz nada fora do Windows)."""
+    try:
+        import ctypes
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, SW_MINIMIZE)
+    except Exception:
+        pass
+
+
+def restore_console() -> None:
+    """Restaura a janela do console atual (nao faz nada fora do Windows)."""
+    try:
+        import ctypes
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, SW_RESTORE)
+    except Exception:
+        pass
+
+
 class HumanRecorder:
     def __init__(self, config: AgentConfig, emergency=None,
-                 clock=time.monotonic):
+                 clock=time.monotonic, window_ctl=None):
         self.config = config
         self.emergency = emergency      # EmergencyStop compartilhado
+        # controlador de janela: minimiza no F12, restaura no F10
+        if window_ctl is None:
+            window_ctl = type("ConsoleWindowCtl", (), {
+                "minimize": staticmethod(minimize_console),
+                "restore": staticmethod(restore_console),
+            })()
+        self.window_ctl = window_ctl
         self._clock = clock            # injetável p/ testes
         self._events: list[dict] = []  # [{"t": s, "x": int, "y": int, "botao": str}]
         self._listener = None
@@ -89,6 +127,8 @@ class HumanRecorder:
             if nome == start_key and not self._recording:
                 self._events.clear()
                 self._recording = True
+                # minimiza a janela do script: nao atrapalha a gravacao
+                self.window_ctl.minimize()
             elif nome == stop_key:
                 self._recording = False
                 self.stop()  # desliga listeners; _stopped sinaliza o fim
@@ -115,6 +155,11 @@ class HumanRecorder:
     def stop(self) -> None:
         self._recording = False
         self._stopped = True
+        # fim da gravacao: devolve a janela do script a tela
+        try:
+            self.window_ctl.restore()
+        except Exception:
+            pass
         if self._listener is not None:
             self._listener.stop()
             self._listener = None

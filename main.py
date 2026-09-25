@@ -83,18 +83,19 @@ def cmd_gravar(saida: str | None) -> None:
     emergencia.start()
     rec = HumanRecorder(config, emergency=emergencia)
     print("Recorder armado.")
-    print("  F12  -> INICIA a gravacao de cliques")
-    print("  F10  -> ENCERRA e salva o roteiro")
-    print("  ESC 3x = emergencia global")
+    print("  F12  -> INICIA a gravacao (esta janela MINIMIZA sozinha)")
+    print("  F10  -> ENCERRA e salva (a janela VOLTAR a tela sozinha)")
+    print("  ESC 3x = emergencia global (encerra e restaura a janela)")
     if not rec.arm():
         print("ERRO: pynput indisponivel.")
         sys.exit(1)
     import time as _time
     try:
-        while not rec.is_stopped:
+        while not rec.is_stopped and not emergencia.triggered:
             _time.sleep(0.1)
     except KeyboardInterrupt:
-        rec.stop()
+        pass
+    rec.stop()  # sempre restaura a janela ao encerrar
     rec.save_script(saida)
     print(f"Roteiro salvo em: {saida} ({rec.click_count()} cliques)")
 

@@ -89,6 +89,30 @@ def run_all():
     acoes = rec.build_script()["acoes"]
     check("eventos ordenados por timestamp", acoes[0]["x"] == 20)
 
+    # --- 8. F12 minimiza a janela do console; F10/emergencia restaura ---
+    class _FakeWin:
+        def __init__(self):
+            self.calls = []
+
+        def minimize(self):
+            self.calls.append("minimize")
+
+        def restore(self):
+            self.calls.append("restore")
+
+    ctl = _FakeWin()
+    rec = make_recorder()
+    rec.window_ctl = ctl
+    check("janela intocada antes da gravacao", ctl.calls == [])
+    rec.stop()
+    check("encerrar gravação restaura a janela", "restore" in ctl.calls)
+
+    ctl2 = _FakeWin()
+    rec2 = make_recorder()
+    rec2.window_ctl = ctl2
+    check("recorder novo sempre restauro disponível",
+          hasattr(rec2.window_ctl, "restore"))
+
     return results
 
 
