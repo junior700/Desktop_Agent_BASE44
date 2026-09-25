@@ -147,34 +147,95 @@ function Enviar {
 }
 
 function Baixar {
+    # 1) rebase/merge de sessao anterior parado no meio? nao mexe
+    if ((Test-Path ".git/rebase-merge") -or (Test-Path ".git/rebase-apply") -or (Test-Path ".git/MERGE_HEAD")) {
+        Write-Host ""
+        Write-Host "Existe uma rebase/merge INTERROMPIDA no repositorio." -ForegroundColor Red
+        Write-Host "Antes de continuar, execute uma destas (na raiz do projeto):" -ForegroundColor Yellow
+        Write-Host "  git rebase --abort    (se foi rebase)" -ForegroundColor Yellow
+        Write-Host "  git merge --abort     (se foi merge)" -ForegroundColor Yellow
+        Write-Host "Depois rode este script de novo." -ForegroundColor Yellow
+        return
+    }
+    # 2) acessa o GitHub
     git fetch origin 2>$null
     if ($LASTEXITCODE -ne 0) {
         Write-Host "ERRO: sem acesso ao GitHub (verifique internet/credenciais)." -ForegroundColor Red
         return
     }
-    # existe a branch main no GitHub?
+    # 3) o GitHub tem a branch main?
     git rev-parse --verify -q origin/main | Out-Null
     if ($LASTEXITCODE -ne 0) {
         Write-Host "GitHub ainda nao tem a branch main (nada para baixar). Use a opcao 1 para publicar." -ForegroundColor Yellow
         return
     }
+    # 4) salva mudancas locais em commit automatico (padrao autostash:
+    #    evita o erro "cannot pull with rebase: You have unstaged changes")
+    if (Test-Path ".gitignore") {
+        $ig = (Get-Content ".gitignore" -Raw) -join ""
+        if ($ig -notmatch "token_github\.txt") {
+            Add-Content ".gitignore" "token_github.txt"
+        }
+    }
+    git add -A
+    # CONTEUDO da pasta == GitHub? (arvores iguais) Entao adota a historia
+    # do GitHub: nada se perde (os arquivos sao identicos) e divergencias
+    # antigas de commits sao eliminadas de uma vez
+    $arvoreLocal = (git write-tree) -join ""
+    $arvoreRemota = (git rev-parse "origin/main^{tree}") -join ""
+    if ($arvoreLocal -and ($arvoreLocal -eq $arvoreRemota)) {
+        git reset --hard origin/main | Out-Null
+        Write-Host "Pasta ja esta identica ao GitHub. Historico alinhado." -ForegroundColor Green
+        return
+    }
+    $pendencias = (git status --porcelain) -join ""
+    if ($pendencias) {
+        $msg = "ajustes locais " + (Get-Date -Format "yyyy-MM-dd HH:mm")
+        git commit -m $msg | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "ERRO ao salvar mudancas locais em commit." -ForegroundColor Red
+            return
+        }
+        Write-Host "Mudancas locais salvas (commit automatico)." -ForegroundColor Green
+    }
+    # 5) repositorio sem nenhum commit ainda? baixa direto do GitHub
+    git rev-parse --verify -q main | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        git reset --hard origin/main | Out-Null
+        Write-Host "Projeto baixado do GitHub." -ForegroundColor Green
+        return
+    }
+    # 6) o GitHub tem algo que falta aqui?
+    $atrasado = [int]((git rev-list --count main..origin/main) -join "")
+    if ($atrasado -eq 0) {
+        Write-Host "GitHub nao tem nada novo (pasta ja atualizada)." -ForegroundColor Yellow
+        return
+    }
+    # 7) rebase: comum, ou "primeira vez" (repo criado no site)
     $temBase = (git merge-base main origin/main 2>$null) -join ""
+    $saida = ""
     if (-not $temBase) {
-        # primeira sincronizacao: o GitHub tem so o commit inicial do site;
-        # rebase mantem SEUS arquivos na frente de qualquer conflito
-        git pull --rebase -X theirs origin main
+        # historias sem parentesco: SEUS arquivos ganham de qualquer conflito
+        $saida = (git pull --rebase -X theirs origin main 2>&1 | Out-String)
     }
     else {
-        git pull --rebase origin main
+        $saida = (git pull --rebase origin main 2>&1 | Out-String)
     }
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
-        Write-Host "CONFLITO entre suas mudancas locais e as do GitHub." -ForegroundColor Red
-        Write-Host "Resolva manualmente e depois rode a opcao 1:" -ForegroundColor Red
-        Write-Host "  git status                     -> ver arquivos em conflito" -ForegroundColor Red
-        Write-Host "  (editar os arquivos marcados)" -ForegroundColor Red
-        Write-Host "  git add -A" -ForegroundColor Red
-        Write-Host "  git rebase --continue" -ForegroundColor Red
+        if ($saida -match "CONFLICT") {
+            Write-Host "CONFLITO real entre suas edicoes e as do GitHub" -ForegroundColor Red
+            Write-Host "na mesma linha de algum arquivo. Para resolver:" -ForegroundColor Red
+            Write-Host "  1) git status                        -> ver arquivos em conflito" -ForegroundColor Yellow
+            Write-Host "  2) abra cada arquivo e escolha o texto" -ForegroundColor Yellow
+            Write-Host "     certo (apague as marcas <<<< ==== >>>>)" -ForegroundColor Yellow
+            Write-Host "  3) git add -A ; git rebase --continue" -ForegroundColor Yellow
+            Write-Host "  (ou desista e volte ao estado anterior com: git rebase --abort)" -ForegroundColor Yellow
+        }
+        else {
+            Write-Host "Falha ao baixar. Detalhes:" -ForegroundColor Red
+            Write-Host $saida
+        }
         return
     }
     Write-Host "Mudancas do GitHub baixadas (rebase)." -ForegroundColor Green
