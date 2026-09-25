@@ -66,6 +66,13 @@ conflito. Repositório criado no site do GitHub (com README inicial) é
 detectado automaticamente: na primeira sincronização o rebase mantém os
 arquivos do projeto na frente do stub do site. Requisito: git instalado (https://git-scm.com).
 
+### publicar_github.bat — add/commit/push com um clique
+
+Na raiz do projeto, rode `publicar_github.bat`: mostra o que mudou,
+pede confirmação, cria o commit com sua mensagem, baixa as novidades
+do GitHub antes de empurrar (evita push rejeitado) e envia. Usa o
+`token_github.txt` automaticamente quando existir.
+
 ### Autenticar com token pessoal (recomendado)
 
 Para não depender de qual conta está logada no navegador: crie um arquivo

@@ -22,7 +22,7 @@ function Menu {
     Write-Host "  [4] Executar roteiro (REAL - controla mouse/teclado)"
     Write-Host "  [5] Gravar cliques humanos (Human Recorder)"
     Write-Host "  [6] Abrir dashboard"
-    Write-Host "  [7] Sincronizar com GitHub"
+    Write-Host "  [7] Sincronizar com GitHub (ps1) | publicar_github.bat"
     Write-Host "  [0] Sair`n"
 }
 
