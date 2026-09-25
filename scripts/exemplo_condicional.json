@@ -1,0 +1,18 @@
+{
+  "nome": "Exemplo com condicional (se texto na tela)",
+  "acoes": [
+    {"tipo": "ler_texto", "salvar_em": "tela_atual.txt"},
+    {
+      "tipo": "se",
+      "condicao": {"tipo": "texto_na_tela", "texto": "salvar"},
+      "entao": [
+        {"tipo": "tecla", "combinacao": "ctrl+s"},
+        {"tipo": "aguardar", "segundos": 1}
+      ],
+      "senao": [
+        {"tipo": "capturar_tela", "arquivo": "nao_achou.png"},
+        {"tipo": "log", "texto": "texto 'salvar' nao estava na tela"}
+      ]
+    }
+  ]
+}

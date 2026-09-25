@@ -1,0 +1,14 @@
+{
+  "nome": "Abrir Bloco de Notas e digitar texto",
+  "acoes": [
+    {"tipo": "tecla", "combinacao": "win+r"},
+    {"tipo": "aguardar", "segundos": 1},
+    {"tipo": "digitar", "texto": "notepad"},
+    {"tipo": "tecla", "combinacao": "enter"},
+    {"tipo": "aguardar", "segundos": 2},
+    {"tipo": "digitar", "texto": "Ola, mundo!"},
+    {"tipo": "aguardar", "segundos": 1},
+    {"tipo": "capturar_tela", "arquivo": "notepad_aberto.png"},
+    {"tipo": "fechar_aplicacao", "janela": "notepad"}
+  ]
+}
