@@ -4,16 +4,23 @@ setlocal EnableDelayedExpansion
 REM ============================================================
 REM publicar_github.bat - Git Add/Commit/Push Automatico
 REM Base: script do usuario, com 3 correcoes:
-REM   1) raiz = pasta onde ESTE arquivo esta (nao dois niveis acima)
+REM   1) raiz adaptativa: usa o .git da pasta do .bat OU de dois
+REM      niveis acima (logica do script original do usuario)
 REM   2) baixa novidades do GitHub ANTES de empurrar (evita push rejeitado)
 REM   3) usa token_github.txt (opcional) para autenticar no push
 REM
-REM Coloque este .bat na RAIZ do projeto (ao lado do main.py).
+REM Coloque este .bat na RAIZ do projeto, OU dois niveis abaixo dela
+REM (a deteccao automatica encontra o repositorio nos dois casos).
 REM Para autenticar sem depender do navegador, crie
 REM token_github.txt na mesma pasta com o PAT dentro (uma linha).
 REM ============================================================
 
 cd /d "%~dp0"
+REM raiz adaptativa: se o .git nao esta aqui, procura dois niveis
+REM acima (mesma logica do script original do usuario)
+if not exist .git (
+    if exist "%~dp0..\..\.git" cd /d "%~dp0..\.."
+)
 echo ========================================
 echo   Git Add/Commit/Push Automatico
 echo ========================================
