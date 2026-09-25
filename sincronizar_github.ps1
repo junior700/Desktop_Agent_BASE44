@@ -23,6 +23,18 @@
 $ErrorActionPreference = "Continue"
 $Repo = "https://github.com/junior700/Desktop_Agent_BASE44.git"
 
+# --- token pessoal (arquivo local, NUNCA versionado) ---
+# crie token_github.txt na mesma pasta com o PAT dentro (uma linha, ghp_...)
+$TokenFile = Join-Path $PSScriptRoot "token_github.txt"
+$RepoComToken = $Repo
+if (Test-Path $TokenFile) {
+    $tk = (Get-Content $TokenFile -Raw).Trim()
+    if ($tk) {
+        $RepoComToken = "https://x-access-token:$tk@github.com/junior700/Desktop_Agent_BASE44.git"
+        Write-Host "Token pessoal detectado (token_github.txt)." -ForegroundColor DarkGray
+    }
+}
+
 # pasta raiz = pasta onde este script esta
 $Raiz = $PSScriptRoot
 if (-not $Raiz) { $Raiz = (Get-Location).Path }
@@ -48,6 +60,7 @@ if (-not (Test-Path ".gitignore")) {
         "*.log"
         ".env"
         "Obsoleto/"
+        "token_github.txt"
     ) | Out-File -Encoding utf8 ".gitignore"
     Write-Host ".gitignore criado." -ForegroundColor Green
 }
@@ -65,20 +78,24 @@ else {
     git config core.autocrlf false
     git remote get-url origin 2>$null
     if ($LASTEXITCODE -ne 0) {
-        git remote add origin $Repo
-        Write-Host "Remote origin criado: $Repo" -ForegroundColor Yellow
+        git remote add origin $RepoComToken
+        Write-Host "Remote origin criado." -ForegroundColor Yellow
     }
     else {
-        $atual = (git remote get-url origin) -join ""
-        if ($atual -ne $Repo) {
-            git remote set-url origin $Repo
-            Write-Host "Remote origin ajustado para $Repo" -ForegroundColor Yellow
-        }
+        # mantem a URL atualizada (com token ou anonima, conforme o caso)
+        git remote set-url origin $RepoComToken
     }
 }
 
 # --- acoes ---
 function Enviar {
+    # seguranca: token nunca entra no commit (mesmo em .gitignore antigo)
+    if (Test-Path ".gitignore") {
+        $ig = (Get-Content ".gitignore" -Raw) -join ""
+        if ($ig -notmatch "token_github\.txt") {
+            Add-Content ".gitignore" "token_github.txt"
+        }
+    }
     git add -A
     $pendencias = (git status --porcelain) -join ""
     if ($pendencias) {

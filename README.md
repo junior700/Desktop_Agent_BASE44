@@ -66,6 +66,14 @@ conflito. Repositório criado no site do GitHub (com README inicial) é
 detectado automaticamente: na primeira sincronização o rebase mantém os
 arquivos do projeto na frente do stub do site. Requisito: git instalado (https://git-scm.com).
 
+### Autenticar com token pessoal (recomendado)
+
+Para não depender de qual conta está logada no navegador: crie um arquivo
+`token_github.txt` na pasta do projeto contendo apenas o token (ghp_...),
+gerado em github.com/settings/tokens (escopo `repo`). O script usa esse
+token automaticamente. O arquivo fica fora do git (.gitignore) e nunca é
+enviado ao repositório.
+
 ## Regras de ouro
 
 1. O agente **sempre inicia em dry-run**. Modo real exige confirmação explícita.
