@@ -256,3 +256,7 @@ switch ($op) {
     default { Write-Host "Opcao invalida." -ForegroundColor Red }
 }
 Write-Host ""
+
+# pausa final: sem isso a janela pisca e fecha antes de ler as mensagens
+Write-Host ""
+Read-Host "Pressione ENTER para fechar" | Out-Null
