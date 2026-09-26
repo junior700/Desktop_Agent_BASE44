@@ -160,8 +160,8 @@ class Dashboard:
                     f"Acao: {ac.get('tipo')}\n{ac}\n\nAprovar execução?")
                 ev.set()
             self.root.after(0, pergunta)
-            ev.wait(timeout=None)
-            return res["ok"]
+            ev.wait(timeout=self.config.confirmation_timeout_s)
+            return res["ok"]  # sem resposta no timeout = negada (fail-safe)
 
         interpreter = ScriptInterpreter(
             self.config, self.guardrails(), self.logger,
@@ -225,12 +225,13 @@ class Dashboard:
             self.events.put(("aviso", None,
                              "recorder armado: aperte F12 p/ iniciar"))
             import time as _t
-            while not rec.is_stopped:
+            while not rec.is_stopped and not self.emergency.is_triggered():
                 _t.sleep(0.1)
                 if rec.is_recording and rec.click_count() and not estado.get("avisou"):
                     estado["avisou"] = True
                     self.events.put(("aviso", None,
                                      f"gravando... {rec.click_count()} cliques (F10 encerra)"))
+            rec.stop()  # desarma listeners E restaura a janela do console
             rec.save_script(path)
             self.events.put(("fim", None,
                              f"gravado: {path} ({rec.click_count()} cliques)"))
@@ -272,12 +273,14 @@ class Dashboard:
                 if fase == "fim":
                     self._feed(f"=== {motivo} ===")
                     self.lbl_status.config(text="Status: idle")
+                    self._atualiza_stats()
                 elif ac is None:
                     self._feed(f"* {motivo}")
                 else:
                     resumo = {k: ac.get(k) for k in ("tipo", "x", "y",
                               "combinacao", "texto", "segundos") if k in ac}
-                    self._feed(f"[{fase}] {resumo} {('("' + motivo + '")') if motivo and motivo != 'ok' else ''}")
+                    extra = f' ("{motivo}")' if motivo and motivo != "ok" else ""
+                    self._feed(f"[{fase}] {resumo}{extra}")
         except queue.Empty:
             pass
         self.root.after(200, self._drain_events)

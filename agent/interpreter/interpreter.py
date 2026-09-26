@@ -224,9 +224,22 @@ class ScriptInterpreter:
 
             executadas += 1
             # Intervalo mínimo entre ações (humanização + rate limit).
-            self._sleep(self.config.min_delay_between_actions_ms / 1000.0)
+            self._sleep_seguro(self.config.min_delay_between_actions_ms / 1000.0)
 
         return (executadas, bloqueadas, True, "")
+
+    def _sleep_seguro(self, segundos: float) -> None:
+        """
+        Dorme em fatias de 0.2s, checando a emergência a cada fatia.
+        Um 'aguardar' de 3600s responde ao ESC 3x em até 0.2s.
+        """
+        resta = max(0.0, float(segundos))
+        while resta > 0:
+            if self.guardrails.is_emergency():
+                return
+            fatia = min(0.2, resta)
+            self._sleep(fatia)
+            resta -= fatia
 
     # ------------------------------------------------------------------
     def _resolve_path(self, caminho: str) -> str:
@@ -283,7 +296,7 @@ class ScriptInterpreter:
         elif tipo == "digitar":
             self.keyboard.type_text(ac["texto"])
         elif tipo == "aguardar":
-            self._sleep(float(ac.get("segundos", 1)))
+            self._sleep_seguro(float(ac.get("segundos", 1)))
         elif tipo == "capturar_tela":
             self.screen.capture_to_file(
                 self._resolve_path(ac.get("arquivo", "captura.png")))

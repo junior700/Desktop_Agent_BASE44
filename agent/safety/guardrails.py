@@ -53,6 +53,10 @@ class GuardRails:
     def attach_emergency_stop(self, emergency: "EmergencyStop") -> None:
         self._emergency = emergency
 
+    def is_emergency(self) -> bool:
+        """A parada de emergência (ESC 3x) está disparada?"""
+        return self._emergency is not None and self._emergency.is_triggered()
+
     def _screen_bounds(self) -> tuple[int, int]:
         """Lê o tamanho real da tela (com cache) e aplica o teto absoluto."""
         if self._screen_size is None:
