@@ -37,10 +37,13 @@ $script:Repo = "https://github.com/junior700/Desktop_Agent_BASE44.git"
 # ------------------------------------------------------------------
 $TokenFile = Join-Path $PSScriptRoot "token_github.txt"
 $script:Token = ""
-if (Test-Path $TokenFile) {
+function Ler-Token([string]$caminho) {
     # ReadAllText: sem BOM surpresa; Trim remove espacos/quebras/aspas
-    $tk = [IO.File]::ReadAllText($TokenFile).Trim(
+    return [IO.File]::ReadAllText($caminho).Trim(
         [char]0xFEFF, " ", "`t", "`r", "`n", '"', "'")
+}
+if (Test-Path $TokenFile) {
+    $tk = Ler-Token $TokenFile
     if ($tk) {
         $script:Token = $tk
         Write-Host "Token pessoal detectado ($TokenFile; usado so em memoria)." -ForegroundColor DarkGray
@@ -48,7 +51,25 @@ if (Test-Path $TokenFile) {
         Write-Host "AVISO: $TokenFile existe mas esta VAZIO. Operacoes de rede" -ForegroundColor Yellow
         Write-Host "vao usar a credencial do Windows (pode dar 403)." -ForegroundColor Yellow
     }
-} else {
+}
+if (-not $script:Token) {
+    # AUTO-CURAR (bug real 26/09/2026): Explorer com 'ocultar extensoes
+    # conhecidas' cria token_github.txt.txt que APARECE como
+    # token_github.txt. Busca por PADRAO, nao por nome exato.
+    $alternativos = Get-ChildItem -Path $PSScriptRoot `
+        -Filter "token_github*.txt" -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -ne $TokenFile } | Sort-Object Name
+    foreach ($alt in $alternativos) {
+        $tk = Ler-Token $alt.FullName
+        if ($tk) {
+            $script:Token = $tk
+            Write-Host "Token encontrado em: $($alt.FullName)" -ForegroundColor Green
+            Write-Host "(nome com extensao duplicada? renomeie para token_github.txt)" -ForegroundColor Yellow
+            break
+        }
+    }
+}
+if (-not $script:Token) {
     # avisa JA AQUI (nao so depois do 403) - poupa 1 tentativa perdida
     Write-Host "Token nao encontrado em: $TokenFile" -ForegroundColor Yellow
     Write-Host "Operacoes de rede vao usar a credencial do Windows (pode dar 403)." -ForegroundColor Yellow
@@ -85,10 +106,20 @@ if (-not (Test-Path ".gitignore")) {
     $ign = @(
         ".venv/", "venv/", "__pycache__/", "*.pyc",
         "agent_audit.db", "capturas/", "logs/", "*.log", ".env",
-        "Obsoleto/", "token_github.txt"
+        "Obsoleto/", "token_github.txt", "token_github*.txt"
     ) -join [Environment]::NewLine
     [IO.File]::WriteAllText((Join-Path $script:Raiz ".gitignore"), $ign)
     Write-Host ".gitignore criado." -ForegroundColor Green
+}
+else {
+    # .gitignore antigo pode nao cobrir token com extensao duplicada
+    # (token_github.txt.txt seria commitado = vazamento de credencial)
+    $ignAtual = [IO.File]::ReadAllText((Join-Path $script:Raiz ".gitignore"))
+    if ($ignAtual -notlike "*token_github*") {
+        [IO.File]::AppendAllText((Join-Path $script:Raiz ".gitignore"),
+            [Environment]::NewLine + "token_github*.txt")
+        Write-Host ".gitignore: adicionado padrao do token (seguranca)." -ForegroundColor Green
+    }
 }
 
 # ------------------------------------------------------------------
@@ -115,6 +146,18 @@ else {
         git remote add origin $script:Repo | Out-Null
         Write-Host "Remote origin criado." -ForegroundColor Green
     }
+}
+
+# SEGURANCA: se um arquivo de token foi rastreado pelo git
+# (commit anterior com extensao duplicada, p.ex.), tira do indice
+# AGORA. Token em repositorio e vazamento de credencial.
+$tokenRastreado = @(git ls-files | Where-Object { $_ -like "token_github*" })
+if ($tokenRastreado.Count -gt 0) {
+    git rm --cached $tokenRastreado | Out-Null
+    Write-Host "AVISO: arquivo de token estava RASTREADO pelo git -" -ForegroundColor Yellow
+    Write-Host "removido do indice ($($tokenRastreado -join ', '))." -ForegroundColor Yellow
+    Write-Host "Se ele ja foi enviado ao GitHub em commit anterior," -ForegroundColor Yellow
+    Write-Host "REGENERE o token em github.com/settings/tokens." -ForegroundColor Yellow
 }
 
 # identidade local: sem ela o commit falha com erro confuso
