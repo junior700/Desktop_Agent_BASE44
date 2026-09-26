@@ -43,8 +43,20 @@ if (Test-Path $TokenFile) {
         [char]0xFEFF, " ", "`t", "`r", "`n", '"', "'")
     if ($tk) {
         $script:Token = $tk
-        Write-Host "Token pessoal detectado (token_github.txt; usado so em memoria)." -ForegroundColor DarkGray
+        Write-Host "Token pessoal detectado ($TokenFile; usado so em memoria)." -ForegroundColor DarkGray
+    } else {
+        Write-Host "AVISO: $TokenFile existe mas esta VAZIO. Operacoes de rede" -ForegroundColor Yellow
+        Write-Host "vao usar a credencial do Windows (pode dar 403)." -ForegroundColor Yellow
     }
+} else {
+    # avisa JA AQUI (nao so depois do 403) - poupa 1 tentativa perdida
+    Write-Host "Token nao encontrado em: $TokenFile" -ForegroundColor Yellow
+    Write-Host "Operacoes de rede vao usar a credencial do Windows (pode dar 403)." -ForegroundColor Yellow
+    Write-Host "ARMADILHA COMUM: extensoes ocultas do Windows Explorer escondem" -ForegroundColor Yellow
+    Write-Host "so a ULTIMA extensao. Se voce criou o arquivo e ele aparece como" -ForegroundColor Yellow
+    Write-Host "'token_github.txt' no Explorer, o nome real pode ser" -ForegroundColor Yellow
+    Write-Host "'token_github.txt.txt'. Confira no PowerShell, nesta pasta:" -ForegroundColor Yellow
+    Write-Host "    dir token_github*" -ForegroundColor Yellow
 }
 # URL das operacoes de rede: com token se houver, senao a limpa
 $script:UrlGit = if ($script:Token) {
