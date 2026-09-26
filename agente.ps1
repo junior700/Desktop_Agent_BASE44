@@ -107,14 +107,17 @@ function Escolher-Saida-Gravacao {
         }
         "6" {
             Start-Process $Venv -ArgumentList "`"$Proj\main.py`" --dashboard"
+            Pause
         }
         "7" {
             # Sincroniza a pasta raiz do projeto com o GitHub
             & powershell -ExecutionPolicy Bypass -File (Join-Path $Proj "sincronizar_github.ps1")
+            Pause
         }
         "8" {
             # Gera publicar_github.exe a partir do fonte .bin (IExpress nativo)
             & powershell -ExecutionPolicy Bypass -File (Join-Path $Proj "restrict\gerar_exe.ps1")
+            Pause
         }
         "0" { break }
     }
