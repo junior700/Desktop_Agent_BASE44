@@ -1,10 +1,10 @@
 """
-runtime.py — Montagem ÚNICA da stack de execução.
+runtime.py - Montagem UNICA da stack de execucao.
 
-Antes (duplicação): main.py e dashboard/app.py montavam controllers,
+Antes (duplicacao): main.py e dashboard/app.py montavam controllers,
 guardrails e interpretador separadamente (~40 linhas cada, risco de
-divergência). Agora ambos chamam montar_stack() — uma única fonte
-da verdade para o pipeline de execução real.
+divergencia). Agora ambos chamam montar_stack() - uma unica fonte
+da verdade para o pipeline de execucao real.
 """
 
 from __future__ import annotations
@@ -24,11 +24,11 @@ from agent.interpreter.interpreter import ScriptInterpreter
 
 
 def titulo_janela_ativa() -> str:
-    """Título da janela em foco (pywinauto, import tardio)."""
+    """Titulo da janela em foco (pywinauto, import tardio)."""
     try:
         from pywinauto import Desktop
         return Desktop(backend="uia").get_active().window_text()
-    except Exception:  # noqa: BLE001 — sem janela ativa = string vazia
+    except Exception:  # noqa: BLE001 - sem janela ativa = string vazia
         return ""
 
 
@@ -40,13 +40,13 @@ def montar_stack(
     on_event=None,
 ) -> tuple[ScriptInterpreter, SimpleNamespace]:
     """
-    Monta a stack REAL de execução (Windows).
+    Monta a stack REAL de execucao (Windows).
 
-    Retorna (interpretador, controllers) — o dashboard usa os controllers
-    para recursos próprios (ex.: botão de captura imediata).
+    Retorna (interpretador, controllers) - o dashboard usa os controllers
+    para recursos proprios (ex.: botao de captura imediata).
 
-    confirmation_fn : (action) -> bool — exigida p/ ações sensíveis em modo real
-    on_event        : (fase, acao, verdict) — feed ao vivo do dashboard
+    confirmation_fn : (action) -> bool - exigida p/ acoes sensiveis em modo real
+    on_event        : (fase, acao, verdict) - feed ao vivo do dashboard
     """
     mouse = MouseController()
     keyboard = KeyboardController(
@@ -59,7 +59,7 @@ def montar_stack(
     try:
         from agent.vision.analysis import ScreenAnalyzer
         analyzer = ScreenAnalyzer(screen)
-    except Exception:  # noqa: BLE001 — análise cromática só com cv2/numpy
+    except Exception:  # noqa: BLE001 - analise cromatica so com cv2/numpy
         analyzer = None
 
     guardrails = GuardRails(
@@ -68,9 +68,17 @@ def montar_stack(
         screen_size_fn=lambda: ScreenController.size())
     guardrails.attach_emergency_stop(emergencia)
 
+    # BUGFIX (26/09/2026): analyzer JAMAIS positional. A assinatura e
+    # (..., reader, matcher, confirmation_fn=None, on_event=None,
+    #  sleep_fn=time.sleep, analyzer=None) - analyzer como 9o
+    # posicion cai na vaga do confirmation_fn, que tambem vem por
+    # nome -> TypeError "got multiple values for argument
+    # 'confirmation_fn'" ao MONTAR a stack (opcoes [3]/[4]/[6] do
+    # menu, main.py e dashboard). Nao tinha teste porque nenhum
+    # teste chamava montar_stack; agora existe tests/test_stack.py.
     interpreter = ScriptInterpreter(
         config, guardrails, logger, mouse, keyboard, screen,
-        reader, matcher, analyzer,
+        reader, matcher, analyzer=analyzer,
         confirmation_fn=confirmation_fn, on_event=on_event)
 
     refs = SimpleNamespace(mouse=mouse, keyboard=keyboard, screen=screen,
