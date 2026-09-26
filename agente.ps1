@@ -167,13 +167,11 @@ while (-not $sair) {
         "4" {
             Write-Host "ATENCAO: modo REAL. O agente vai controlar mouse e teclado." -ForegroundColor Yellow
             Write-Host "ESC 3x interrompe tudo imediatamente."
-            $conf = Read-Host "Continuar? [s/N]"
-            if ($conf -eq "s") {
-                $rot = Escolher-Roteiro
-                if ($rot) {
-                    if (Test-Path $Venv) { & $Venv (Join-Path $Proj "main.py") $rot --real }
-                    else { Write-Host "Rode a opcao [1] primeiro." -ForegroundColor Yellow }
-                }
+            Write-Host "O main.py pedira confirmacao antes de executar."
+            $rot = Escolher-Roteiro
+            if ($rot) {
+                if (Test-Path $Venv) { & $Venv (Join-Path $Proj "main.py") $rot --real }
+                else { Write-Host "Rode a opcao [1] primeiro." -ForegroundColor Yellow }
             }
             Pause
         }

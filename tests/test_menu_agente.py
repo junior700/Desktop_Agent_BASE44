@@ -140,10 +140,11 @@ def run_all():
           "-NoProfile -ExecutionPolicy Bypass" in blocos.get("9", ""))
     check("opcao [8]: exe e gerado via IExpress com powershell -ExecutionPolicy Bypass",
           "-ExecutionPolicy Bypass" in blocos.get("8", ""))
-    check("opcao [4]: modo REAL exige confirmacao explicita [s/N]",
-          "Continuar? [s/N]" in blocos.get("4", ""))
     check("opcao [4]: modo REAL avisa ESC 3x antes de rodar",
           "ESC 3x" in blocos.get("4", ""))
+    check("opcao [4]: SEM confirmacao duplicada no PS (a unica e no main.py)",
+          "Continuar?" not in blocos.get("4", "") and
+          "O main.py pedira confirmacao" in blocos.get("4", ""))
 
     # === PAUSA: toda saida visivel termina em pausa (regra anti-flash) ===
     sem_pausa = [n for n, b in blocos.items()

@@ -90,6 +90,17 @@ def _vars_por_classe(arvore, mapa_imports):
     return vars_
 
 
+def _titulo_janela_ativa_rapido():
+    """Chama a funcao real: no sandbox (Linux) deve voltar '' na hora."""
+    import sys
+    sys.path.insert(0, os.path.join(BASE))
+    import time as _t
+    from agent.runtime import titulo_janela_ativa
+    ini = _t.monotonic()
+    titulo = titulo_janela_ativa()
+    return (_t.monotonic() - ini) < 1.0 and titulo == ""
+
+
 def run_all():
     results = []
     check = lambda n, c: results.append((n, bool(c)))  # noqa: E731
@@ -137,6 +148,28 @@ def run_all():
           f"reais ({cobertos} confirmados)", len(erros) == 0)
     for e in erros:
         check("  erro: " + e, False)
+
+    # === modo REAL (opcao [4]): congelamento + UX (bug real 26/09/2026,
+    #     o agente travou ANTES do primeiro clique, console parado) ===
+    rt = open(os.path.join(BASE, "agent", "runtime.py"),
+              encoding="ascii").read()
+    check("[3]/[4]: titulo_janela_ativa usa Win32 nativo (GetForegroundWindow)",
+          "GetForegroundWindow" in rt and "GetWindowTextW" in rt)
+    check("[3]/[4]: REGRESSAO congelamento: SEM pywinauto UIA no titulo",
+          "backend=\"uia\"" not in rt and "get_active()" not in rt)
+    check("[3]/[4]: titulo_janela_ativa responde rapido no sandbox",
+          _titulo_janela_ativa_rapido())
+    check("[4]: EXATAMENTE UMA confirmacao Continuar no main.py (sem dupla)",
+          fonte.count('input("Continuar? [s/N] ")') == 1)
+    check("[4]: minimiza console ANTES de executar no modo REAL",
+          fonte.index("minimize_console()") <
+          fonte.index("interpreter.run_file(args.roteiro)"))
+    check("[4]: restaura console no fim E no finally (ESC/erro tambem)",
+          fonte.count("restore_console()") >= 2 and
+          "restore_console()" in fonte.split("finally:")[1])
+    check("[4]: minimizar vem do recorder (mesmo codigo do F12/F10)",
+          "from agent.recorder.recorder import minimize_console, restore_console"
+          in fonte)
 
     # === regressao do bug real: o typo NAO pode voltar ===
     check("BUG REAL [5]: 'emergencia.triggered' (attr inexistente) ausente",

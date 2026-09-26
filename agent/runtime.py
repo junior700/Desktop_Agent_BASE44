@@ -24,10 +24,28 @@ from agent.interpreter.interpreter import ScriptInterpreter
 
 
 def titulo_janela_ativa() -> str:
-    """Titulo da janela em foco (pywinauto, import tardio)."""
+    """Titulo da janela em foco via Win32 nativo (ctypes, instantaneo).
+
+    NAO usar pywinauto aqui (bug real 26/09/2026): o backend 'uia'
+    espera o provedor UI Automation da janela em foco responder e
+    pode travar por tempo INDEFINIDO - o modo REAL congelava antes
+    do primeiro clique (guardrails le o titulo ANTES de cada acao).
+    GetForegroundWindow + GetWindowTextW sao chamadas Win32
+    sincronas de microssegundos, sem fila de mensagens. Fora do
+    Windows retorna '' (o mesmo contrato anterior).
+    """
+    import sys as _sys
+    if _sys.platform != "win32":
+        return ""
     try:
-        from pywinauto import Desktop
-        return Desktop(backend="uia").get_active().window_text()
+        import ctypes
+        user32 = ctypes.windll.user32
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return ""
+        buf = ctypes.create_unicode_buffer(512)
+        user32.GetWindowTextW(hwnd, buf, 512)
+        return buf.value
     except Exception:  # noqa: BLE001 - sem janela ativa = string vazia
         return ""
 

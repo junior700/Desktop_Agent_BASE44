@@ -29,6 +29,7 @@ from agent.control.screen import ScreenController
 from agent.vision.ocr import ScreenReader, TesseractOCREngine
 from agent.vision.template_match import TemplateMatcher
 from agent.runtime import montar_stack
+from agent.recorder.recorder import minimize_console, restore_console
 
 
 def confirmar_terminal(ac):
@@ -129,15 +130,25 @@ def main():
         if resp != "s":
             print("Abortado pelo operador.")
             sys.exit(0)
+        # A janela deste script MINIMIZA durante a execucao (mesmo
+        # comportamento do Human Recorder no F12) para nao atrapalhar
+        # os cliques; volta ao final para mostrar o resultado. ESC 3x
+        # continua funcionando (listener global do pynput).
+        print("Minimizando esta janela durante a execucao...")
+        minimize_console()
 
     try:
         res = interpreter.run_file(args.roteiro)
+        if args.real:
+            restore_console()
         print(f"CONCLUIDO ok={res.ok} executadas={res.executadas} "
               f"bloqueadas={res.bloqueadas}")
         if res.abort_reason:
             print(f"motivo do aborto: {res.abort_reason}")
         sys.exit(0 if res.ok else 1)
     finally:
+        if args.real:
+            restore_console()
         emergencia.stop()
         logger.close()
 
