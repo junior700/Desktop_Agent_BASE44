@@ -48,7 +48,31 @@ capturas em `capturas\`.
   - `python main.py scripts\notepad.json` — dry-run (simula, não toca em nada)
   - `python main.py scripts\notepad.json --real` — executa de verdade
   - `python main.py --gravar scripts\minha.json` — recorder: **F12 inicia**, **F10 encerra**
-  - `python main.py --dashboard` — painel gráfico
+  - `python main.py --dashboard` — painel gráfico (tem botão **Capturar tela agora**)
+
+### Visão programática (OCR, cor e geometria)
+
+| Recurso | Tipo/Condição | Como usa |
+|---|---|---|
+| OCR: clicar em texto | ação `clicar_texto {"texto": "Salvar"}` | localiza o texto na tela e clica no centro |
+| OCR: condicional | `se {"tipo": "texto_na_tela", "texto": "..."}` | executa o ramo se o texto aparecer |
+| Cromática: clicar em cor | ação `clicar_cor {"cor": "#ff0000", "tolerancia": 30}` | centro do aglomerado da cor |
+| Cromática: condicional | `se {"tipo": "cor_na_tela", "cor": "r,g,b ou #hex"}` | aceita `tolerancia` (default 30) |
+| Geometria: condicional | `se {"tipo": "forma_na_tela", "forma": "retangulo"}` | retangulo/quadrado/triangulo/circulo, via OpenCV |
+| Imagem: condicional | `se {"tipo": "imagem_na_tela", "imagem": "templates\\botao.png"}` | template matching (confiança 0.8) |
+
+Regra de segurança: `clicar_texto`/`clicar_cor` resolvem a coordenada na
+hora e o **clique resultante é revalidado pelo guardrail** (coordenada,
+blacklist, rate limit). Nenhum clique escapa da validação.
+
+### Pastas do projeto
+
+- `scripts\` — roteiros JSON e gravações do recorder
+- `capturas\` — prints de tela (ação `capturar_tela` com caminho relativo,
+  e o botão "Capturar tela agora" do dashboard)
+- `templates\` — imagens de referência para `imagem_na_tela`
+
+Cor aceita `"r,g,b"` (`"255,0,0"`) ou hex (`"#ff0000"`, `"#f00"`).
 
 ## Publicar no GitHub
 

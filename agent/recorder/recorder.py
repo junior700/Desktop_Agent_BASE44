@@ -226,8 +226,15 @@ class HumanRecorder:
 
         return {"nome": nome, "acoes": acoes}
 
-    def save_script(self, path: str, nome: str = "gravacao") -> str:
+    def save_script(self, path: str, nome: str = "gravacao") -> str | None:
+        """
+        Salva o roteiro. Retorna o caminho, ou None se NADA foi gravado
+        (0 cliques: um roteiro vazio é inválido para o interpretador —
+        não criar arquivo inútil é mais honesto que criar um que falha).
+        """
         script = self.build_script(nome)
+        if not script["acoes"]:
+            return None
         with open(path, "w", encoding="utf-8") as f:
             json.dump(script, f, ensure_ascii=False, indent=2)
         return path

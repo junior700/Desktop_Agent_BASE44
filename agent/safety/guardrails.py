@@ -46,6 +46,7 @@ class GuardRails:
         self._action_timestamps: list[float] = []   # janela deslizante p/ rate limit
         self._emergency: Optional["EmergencyStop"] = None
         self._screen_size: tuple[int, int] | None = None
+        self._screen_size_ts: float = 0.0
 
     # ------------------------------------------------------------------
     # Emergência: o stop é injetado pelo executor na inicialização.
@@ -58,14 +59,22 @@ class GuardRails:
         return self._emergency is not None and self._emergency.is_triggered()
 
     def _screen_bounds(self) -> tuple[int, int]:
-        """Lê o tamanho real da tela (com cache) e aplica o teto absoluto."""
-        if self._screen_size is None:
+        """
+        Lê o tamanho real da tela com CACHE COM TTL: se a resolução mudar
+        em runtime, o guardrail volta a validar contra a tela real em até
+        screen_cache_ttl_s segundos.
+        """
+        agora = time.monotonic()
+        expirou = (agora - self._screen_size_ts
+                   > getattr(self.config, "screen_cache_ttl_s", 30.0))
+        if self._screen_size is None or expirou:
             w, h = self._screen_fn() or (self.config.max_screen_width,
                                          self.config.max_screen_height)
             self._screen_size = (
                 min(w, self.config.max_screen_width),
                 min(h, self.config.max_screen_height),
             )
+            self._screen_size_ts = agora
         return self._screen_size
 
     def reset_screen_cache(self) -> None:
@@ -106,14 +115,27 @@ class GuardRails:
         if tipo in ("digitar",):
             return self._validate_typed(action, snapshot)
 
-        # 6) Ações sensíveis: exigem confirmação humana.
+        # 6) executar_shell: o COMANDO segue as mesmas regras de texto
+        #    proibido do 'digitar' (shutdown, del, regedit etc.).
+        if tipo == "executar_shell":
+            v = self._validate_typed({"texto": str(action.get("comando", ""))},
+                                      snapshot)
+            if not v.allowed:
+                return Verdict(False, v.reason.replace("texto proibido",
+                                                       "comando de shell proibido"),
+                               action_snapshot=snapshot)
+
+        # 7) Ações sensíveis: exigem confirmação humana.
         if tipo in self.config.sensitive_action_types:
             if self.config.require_confirmation_sensitive:
                 return Verdict(True, "acao sensivel", requires_confirmation=True,
                                action_snapshot=snapshot)
 
         # Tipos conhecidos e seguros (aguardar, capturar_tela, ler_texto).
-        if tipo in ("aguardar", "capturar_tela", "ler_texto", "log", "beep"):
+        # clicar_texto/clicar_cor resolvem a coordenada NA HORA; o clique
+        # sintético passa pelo guardrails de novo (ver interpreter).
+        if tipo in ("aguardar", "capturar_tela", "ler_texto", "log", "beep",
+                    "clicar_texto", "clicar_cor"):
             return Verdict(True, "ok", action_snapshot=snapshot)
 
         # Tipo desconhecido: recusa por padrão (fail-safe).

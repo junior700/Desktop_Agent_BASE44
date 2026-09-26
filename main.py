@@ -28,42 +28,15 @@ from agent.control.keyboard import KeyboardController
 from agent.control.screen import ScreenController
 from agent.vision.ocr import ScreenReader, TesseractOCREngine
 from agent.vision.template_match import TemplateMatcher
-from agent.interpreter.interpreter import ScriptInterpreter
+from agent.runtime import montar_stack
 
 
-def construir_stack(config: AgentConfig, emergencia: EmergencyStop,
-                    logger: AuditLogger):
-    """Monta interpretador com controllers reais (Windows)."""
-    mouse = MouseController()
-    keyboard = KeyboardController(
-        delay_min_ms=config.typing_delay_min_ms,
-        delay_max_ms=config.typing_delay_max_ms)
-    screen = ScreenController()
-    reader = ScreenReader(screen, TesseractOCREngine())
-    matcher = TemplateMatcher(screen)
-    guardrails = GuardRails(
-        config,
-        active_window_title_fn=_titulo_janela_ativa,
-        screen_size_fn=lambda: ScreenController.size())
-    guardrails.attach_emergency_stop(emergencia)
-
-    def confirmar_terminal(ac):
-        print(f"\n*** ACAO SENSIVEL: {ac.get('tipo')} ***")
-        print(f"    {ac}")
-        resp = input("    Aprovar? [s/N] ").strip().lower()
-        return resp == "s"
-
-    return ScriptInterpreter(config, guardrails, logger,
-                             mouse, keyboard, screen, reader, matcher,
-                             confirmation_fn=confirmar_terminal)
-
-
-def _titulo_janela_ativa() -> str:
-    try:
-        from pywinauto import Desktop
-        return Desktop(backend="uia").get_active().window_text()
-    except Exception:  # noqa: BLE001
-        return ""
+def confirmar_terminal(ac):
+    """Confirmação de ação sensível no CLI (s/N)."""
+    print(f"\n*** ACAO SENSIVEL: {ac.get('tipo')} ***")
+    print(f"    {ac}")
+    resp = input("    Aprovar? [s/N] ").strip().lower()
+    return resp == "s"
 
 
 def cmd_gravar(saida: str | None) -> None:
@@ -96,8 +69,10 @@ def cmd_gravar(saida: str | None) -> None:
     except KeyboardInterrupt:
         pass
     rec.stop()  # sempre restaura a janela ao encerrar
-    rec.save_script(saida)
-    print(f"Roteiro salvo em: {saida} ({rec.click_count()} cliques)")
+    if rec.save_script(saida) is None:
+        print("0 cliques gravados — roteiro vazio NAO foi salvo.")
+    else:
+        print(f"Roteiro salvo em: {saida} ({rec.click_count()} cliques)")
 
 
 def main():
@@ -144,7 +119,8 @@ def main():
     emergencia.start()
 
     logger = AuditLogger(config.audit_db_path)
-    interpreter = construir_stack(config, emergencia, logger)
+    interpreter, _refs = montar_stack(config, emergencia, logger,
+                                      confirmation_fn=confirmar_terminal)
 
     if args.real:
         print("*** MODO REAL: o agente vai controlar mouse e teclado. ***")

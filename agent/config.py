@@ -69,15 +69,21 @@ class AgentConfig:
     double_click_window_ms: int = 350   # 2 cliques rápidos = duplo clique
 
     # --- Segurança ---
+    # Cache do tamanho da tela expira após N segundos (resolução muda em runtime).
+    screen_cache_ttl_s: float = 30.0
     emergency_esc_presses: int = 3
     emergency_window_s: float = 1.5
     confirmation_timeout_s: int = 30
     # Diretórios onde apagar_arquivo pode atuar. VAZIO = sempre bloqueado.
     file_op_allowed_dirs: list[str] = field(default_factory=list)
 
-    # --- Saída de capturas ---
+    # --- Saída de capturas e imagens de referência ---
     # capturar_tela / ler_texto com caminho RELATIVO caem aqui.
     capture_dir: str = "capturas"
+    # Templates (prints de botões/ícones p/ condicional imagem_na_tela).
+    templates_dir: str = "templates"
+    # Tolerância cromática padrão (canal 0-255) p/ cor_na_tela/clicar_cor.
+    color_tolerance: int = 30
 
     # --- Recorder ---
     recorder_start_key: str = "f12"     # tecla que INICIA a gravação

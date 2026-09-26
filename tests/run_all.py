@@ -15,6 +15,7 @@ TESTES = [
     "test_recorder.py",
     "test_decision.py",
     "test_smoke.py",
+    "test_vision.py",
 ]
 
 

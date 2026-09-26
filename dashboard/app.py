@@ -26,14 +26,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 from agent.config import AgentConfig
 from agent.safety.emergency_stop import EmergencyStop
-from agent.safety.guardrails import GuardRails
 from agent.safety.logger import AuditLogger
-from agent.control.mouse import MouseController
-from agent.control.keyboard import KeyboardController
-from agent.control.screen import ScreenController
-from agent.vision.ocr import ScreenReader, TesseractOCREngine
-from agent.vision.template_match import TemplateMatcher
-from agent.interpreter.interpreter import ScriptInterpreter
+from agent.runtime import montar_stack
 from agent.ui.native_dialogs import selecionar_arquivo, selecionar_pasta
 
 
@@ -51,14 +45,11 @@ class Dashboard:
         self.emergency.start()
         self.logger = AuditLogger(self.config.audit_db_path)
 
-        # Controllers reais (imports tardios acontecem aqui)
-        self.mouse = MouseController()
-        self.keyboard = KeyboardController(
-            delay_min_ms=self.config.typing_delay_min_ms,
-            delay_max_ms=self.config.typing_delay_max_ms)
-        self.screen = ScreenController()
-        self.reader = ScreenReader(self.screen, TesseractOCREngine())
-        self.matcher = TemplateMatcher(self.screen)
+        # Stack ÚNICA compartilhada com o CLI (agent/runtime.py)
+        self.interpreter, self.refs = montar_stack(
+            self.config, self.emergency, self.logger,
+            confirmation_fn=self._confirmar_sensivel,
+            on_event=lambda fase, ac, v: self.events.put((fase, ac, v.reason)))
 
         self.events: "queue.Queue[tuple]" = queue.Queue()
         self.script_path: str | None = None
@@ -98,6 +89,8 @@ class Dashboard:
                    command=self.gravar_cliques).grid(row=0, column=0, **pad)
         ttk.Button(topo2, text="Pasta de capturas...",
                    command=self.escolher_pasta_capturas).grid(row=0, column=1, **pad)
+        ttk.Button(topo2, text="Capturar tela agora",
+                   command=self.capturar_agora).grid(row=0, column=2, **pad)
         self.lbl_capdir = ttk.Label(topo2, text=self._nome_capdir())
         self.lbl_capdir.grid(row=0, column=2, **pad)
 
@@ -149,30 +142,9 @@ class Dashboard:
         self._feed(f"=== executando {os.path.basename(self.script_path)} "
                    f"({'dry-run' if self.config.dry_run else 'REAL'}) ===")
 
-        def confirmar(ac):
-            # Janela modal de confirmação para ações sensíveis.
-            res = {"ok": False}
-            ev = threading.Event()
-
-            def pergunta():
-                res["ok"] = messagebox.askyesno(
-                    "AÇÃO SENSÍVEL",
-                    f"Acao: {ac.get('tipo')}\n{ac}\n\nAprovar execução?")
-                ev.set()
-            self.root.after(0, pergunta)
-            ev.wait(timeout=self.config.confirmation_timeout_s)
-            return res["ok"]  # sem resposta no timeout = negada (fail-safe)
-
-        interpreter = ScriptInterpreter(
-            self.config, self.guardrails(), self.logger,
-            self.mouse, self.keyboard, self.screen,
-            self.reader, self.matcher,
-            confirmation_fn=confirmar if modo_real else None,
-            on_event=lambda fase, ac, v: self.events.put((fase, ac, v.reason)))
-
         def roda():
             try:
-                res = interpreter.run_file(self.script_path)
+                res = self.interpreter.run_file(self.script_path)
                 msg = (f"CONCLUIDO ok={res.ok} executadas={res.executadas} "
                        f"bloqueadas={res.bloqueadas} {res.abort_reason}")
             except Exception as e:  # noqa: BLE001 — erro vira feed, não crash
@@ -183,21 +155,19 @@ class Dashboard:
         self.runner_thread.start()
         self.lbl_status.config(text="Status: executando...")
 
-    def guardrails(self):
-        g = GuardRails(
-            self.config,
-            active_window_title_fn=self._titulo_janela_ativa,
-            screen_size_fn=lambda: ScreenController.size())
-        g.attach_emergency_stop(self.emergency)
-        return g
+    def _confirmar_sensivel(self, ac) -> bool:
+        """Janela modal p/ ação sensível; timeout = negada (fail-safe)."""
+        res = {"ok": False}
+        ev = threading.Event()
 
-    def _titulo_janela_ativa(self) -> str:
-        try:
-            from pywinauto import Desktop  # import tardio
-            w = Desktop(backend="uia").get_active()
-            return w.window_text()
-        except Exception:  # noqa: BLE001 — sem janela ativa = string vazia
-            return ""
+        def pergunta():
+            res["ok"] = messagebox.askyesno(
+                "AÇÃO SENSÍVEL",
+                f"Acao: {ac.get('tipo')}\n{ac}\n\nAprovar execução?")
+            ev.set()
+        self.root.after(0, pergunta)
+        ev.wait(timeout=self.config.confirmation_timeout_s)
+        return res["ok"]
 
     # ------------------------------------------------------------------
     # Recorder + pasta de capturas (janelas nativas do Windows)
@@ -232,10 +202,26 @@ class Dashboard:
                     self.events.put(("aviso", None,
                                      f"gravando... {rec.click_count()} cliques (F10 encerra)"))
             rec.stop()  # desarma listeners E restaura a janela do console
-            rec.save_script(path)
-            self.events.put(("fim", None,
-                             f"gravado: {path} ({rec.click_count()} cliques)"))
+            if rec.save_script(path) is None:
+                self.events.put(("fim", None,
+                                 "0 cliques gravados — roteiro vazio NAO salvo"))
+            else:
+                self.events.put(("fim", None,
+                                 f"gravado: {path} ({rec.click_count()} cliques)"))
 
+        threading.Thread(target=roda, daemon=True).start()
+
+    def capturar_agora(self):
+        """Print imediato salvo em capturas\ (janela nativa define a pasta)."""
+        def roda():
+            try:
+                import datetime as _dt
+                nome = "print_" + _dt.datetime.now().strftime("%Y%m%d_%H%M%S") + ".png"
+                path = self.interpreter._resolve_path(nome)
+                self.refs.screen.capture_to_file(path)
+                self.events.put(("aviso", None, f"print salvo: {path}"))
+            except Exception as e:  # noqa: BLE001 — erro vira feed, não crash
+                self.events.put(("aviso", None, f"print FALHOU: {e}"))
         threading.Thread(target=roda, daemon=True).start()
 
     def escolher_pasta_capturas(self):

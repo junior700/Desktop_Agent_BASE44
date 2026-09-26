@@ -13,8 +13,12 @@ Política fail-safe:
 Tipos de ação suportados:
     mover_mouse, clicar, duplo_clique, clique_direito,
     tecla, digitar, aguardar, capturar_tela, ler_texto,
-    se (condicional), beep, log,
+    se (condicional), beep, log, clicar_texto, clicar_cor,
     apagar_arquivo*, fechar_aplicacao*, executar_shell*   (* = sensível)
+
+Condições: texto_na_tela, imagem_na_tela, cor_na_tela, forma_na_tela,
+sempre. clicar_texto/clicar_cor localizam o alvo NA TELA na hora e o
+clique resultante é REVALIDADO pelo guardrail (nunca clica sem validação).
 """
 
 from __future__ import annotations
@@ -40,6 +44,8 @@ _REQUIRED = {
     "fechar_aplicacao": ("janela",),
     "executar_shell": ("comando",),
     "se": ("condicao", "entao"),
+    "clicar_texto": ("texto",),
+    "clicar_cor": ("cor",),
 }
 
 KNOWN_TYPES = set(_REQUIRED) | {
@@ -67,11 +73,13 @@ class ScriptInterpreter:
                  logger: AuditLogger, mouse, keyboard, screen,
                  reader, matcher,
                  confirmation_fn=None, on_event=None,
-                 sleep_fn=time.sleep):
+                 sleep_fn=time.sleep, analyzer=None):
         """
         mouse/keyboard/screen : controllers (reais ou fakes de teste)
         reader : ScreenReader (OCR) — pode ser None (desabilita ler_texto/se texto)
         matcher : TemplateMatcher — pode ser None (desabilita se imagem)
+        analyzer : ScreenAnalyzer — cor/geometria; None desabilita cor_na_tela
+                  e forma_na_tela/clicar_cor
         confirmation_fn : (action) -> bool, chamada p/ ações sensíveis em modo real
         on_event : (fase, acao, verdict) callback p/ dashboard ao vivo
         sleep_fn : injetável p/ testes rápidos
@@ -84,6 +92,7 @@ class ScriptInterpreter:
         self.screen = screen
         self.reader = reader
         self.matcher = matcher
+        self.analyzer = analyzer
         self.confirmation_fn = confirmation_fn
         self.on_event = on_event
         self._sleep = sleep_fn
@@ -147,6 +156,21 @@ class ScriptInterpreter:
         elif t == "imagem_na_tela":
             if not str(cond.get("imagem", "")).strip():
                 return [f"{onde}: condicao imagem_na_tela exige 'imagem'"]
+        elif t == "cor_na_tela":
+            if not str(cond.get("cor", "")).strip():
+                return [f"{onde}: condicao cor_na_tela exige 'cor'"]
+            try:
+                from agent.vision.analysis import _parse_cor
+                _parse_cor(cond["cor"])
+            except ValueError as e:
+                return [f"{onde}: {e}"]
+        elif t == "forma_na_tela":
+            if not str(cond.get("forma", "")).strip():
+                return [f"{onde}: condicao forma_na_tela exige 'forma'"]
+            if cond["forma"].strip().lower() not in ("retangulo", "quadrado",
+                                                     "triangulo", "circulo",
+                                                     "elipse"):
+                return [f"{onde}: forma valida: retangulo/quadrado/triangulo/circulo"]
         elif t == "sempre":
             return []
         else:
@@ -273,6 +297,17 @@ class ScriptInterpreter:
                 return None
             achou = self.matcher.is_on_screen(
                 cond["imagem"], float(cond.get("confianca", 0.8)))
+        elif t == "cor_na_tela":
+            if self.analyzer is None:
+                return None
+            achou = self.analyzer.color_on_screen(
+                cond["cor"], int(cond.get("tolerancia",
+                                          self.config.color_tolerance)))
+        elif t == "forma_na_tela":
+            if self.analyzer is None:
+                return None
+            achou = self.analyzer.shape_on_screen(
+                cond["forma"], int(cond.get("area_min", 200)))
         else:
             return None
         return ac_se["entao"] if achou else ac_se.get("senao", [])
@@ -310,9 +345,29 @@ class ScriptInterpreter:
                 with open(destino, "w", encoding="utf-8") as f:
                     f.write(texto)
         elif tipo == "beep":
-            print("\a", end="")  # bip simples do terminal
+            try:
+                import winsound  # Windows: beep real do hardware
+                winsound.Beep(1000, 200)
+            except ImportError:
+                print("\a", end="", flush=True)  # fallback fora do Windows
         elif tipo == "log":
             pass  # a mensagem já vai no audit log (snapshot)
+        elif tipo == "clicar_texto":
+            if self.reader is None:
+                raise RuntimeError("OCR nao configurado")
+            centro = self.reader.locate_text(str(ac["texto"]))
+            if centro is None:
+                raise RuntimeError(f"texto nao encontrado na tela: {ac['texto']!r}")
+            self._clicar_validado(centro, origem="clicar_texto")
+        elif tipo == "clicar_cor":
+            if self.analyzer is None:
+                raise RuntimeError("analise de cor nao configurada (cv2/numpy)")
+            centro = self.analyzer.find_color(
+                str(ac["cor"]), int(ac.get("tolerancia",
+                                          self.config.color_tolerance)))
+            if centro is None:
+                raise RuntimeError(f"cor nao encontrada na tela: {ac['cor']!r}")
+            self._clicar_validado(centro, origem="clicar_cor")
         elif tipo == "apagar_arquivo":
             self._delete_file(str(ac["caminho"]))
         elif tipo == "fechar_aplicacao":
@@ -321,6 +376,20 @@ class ScriptInterpreter:
             self._run_shell(str(ac["comando"]))
         else:  # nunca deve acontecer (validação já cobriu)
             raise RuntimeError(f"tipo nao implementado: {tipo}")
+
+    def _clicar_validado(self, centro: tuple[int, int], origem: str) -> None:
+        """
+        Clique com coordenada resolvida em RUNTIME (OCR/cor/geometria).
+        Monta um 'clicar' sintético e passa pelo guardrail DE NOVO:
+        a regra 'toda ação passa por validate()' nunca é burlada.
+        """
+        sintetico = {"tipo": "clicar", "x": int(centro[0]), "y": int(centro[1]),
+                     "_origem": origem}
+        verdict = self.guardrails.validate(sintetico)
+        if not verdict.allowed:
+            raise RuntimeError(f"clique bloqueado pelo guardrail: {verdict.reason}")
+        self._log(sintetico, True, True, f"{origem} -> clique validado")
+        self.mouse.click(sintetico["x"], sintetico["y"])
 
     # ------------------------------------------------------------------
     # Ações sensíveis — implementações com verificação extra própria.
