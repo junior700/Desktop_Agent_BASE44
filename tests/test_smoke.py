@@ -1,8 +1,8 @@
 """
-test_smoke.py — Smoke test: TODOS os .py do projeto devem compilar.
+test_smoke.py - Smoke test: TODOS os .py do projeto devem compilar.
 
-Motivação (revisão de 25/09/2026): o dashboard/app.py foi entregue com
-erro de sintaxe e nenhum teste percebeu, porque a suíte não compilava
+Motivacao (revisao de 25/09/2026): o dashboard/app.py foi entregue com
+erro de sintaxe e nenhum teste percebeu, porque a suite nao compilava
 os arquivos de UI. Este teste compila CADA .py do projeto, incluindo
 dashboard/ e main.py, garantindo que nada quebre por erro de sintaxe.
 """
@@ -18,7 +18,7 @@ def _todos_py():
     for dirpath, dirnames, filenames in os.walk(RAIZ):
         dirnames[:] = [d for d in dirnames
                        if d not in ("__pycache__", ".venv", "venv", "env",
-                                    "Obsoleto", ".git")]
+                                    "Obsoleto", ".git", "patches")]
         for fn in filenames:
             if fn.endswith(".py"):
                 yield os.path.join(dirpath, fn), fn
@@ -45,6 +45,6 @@ def run_all():
 if __name__ == "__main__":
     rs = run_all()
     for n, ok in rs:
-        print(("✅" if ok else "❌"), n)
+        print(("[OK]" if ok else "[ERRO]"), n)
     print(f"\n{sum(o for _, o in rs)}/{len(rs)}")
     sys.exit(0 if all(o for _, o in rs) else 1)

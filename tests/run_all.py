@@ -1,6 +1,6 @@
 """
 run_all.py - Roda TODOS os testes do projeto e reporta o total.
-Uso: python tests/run_all.py  (no Windows: .venv\Scripts\python tests\run_all.py)
+Uso: python tests/run_all.py  (no Windows: .venv\\Scripts\\python tests\\run_all.py)
 """
 
 import os

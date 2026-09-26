@@ -1,16 +1,16 @@
 """
-app.py — Dashboard Tkinter do agente de desktop.
+app.py - Dashboard Tkinter do agente de desktop.
 
 Funcionalidades:
 - Carregar roteiro via seletor de arquivos (File Explorer)
 - Executar roteiro com modo dry-run (default LIGADO) ou real
-- Feed ao vivo das ações (executada/bloqueada/dry_run)
-- Estatísticas do audit log (total/permitidas/bloqueadas/executadas)
-- Confirmação de ações sensíveis (janela modal)
-- Botão de PARADA DE EMERGÊNCIA e reset (ESC 3x também funciona)
+- Feed ao vivo das acoes (executada/bloqueada/dry_run)
+- Estatisticas do audit log (total/permitidas/bloqueadas/executadas)
+- Confirmacao de acoes sensiveis (janela modal)
+- Botao de PARADA DE EMERGENCIA e reset (ESC 3x tambem funciona)
 
 O roteiro roda numa THREAD separada; a UI nunca trava.
-Eventos chegam à UI via fila (thread-safe).
+Eventos chegam a UI via fila (thread-safe).
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from agent.ui.native_dialogs import selecionar_arquivo, selecionar_pasta
 class Dashboard:
     def __init__(self, root: tk.Tk):
         self.root = root
-        root.title("Desktop Agent — Painel de Controle")
+        root.title("Desktop Agent - Painel de Controle")
         root.geometry("880x560")
 
         self.config = AgentConfig()
@@ -45,7 +45,7 @@ class Dashboard:
         self.emergency.start()
         self.logger = AuditLogger(self.config.audit_db_path)
 
-        # Stack ÚNICA compartilhada com o CLI (agent/runtime.py)
+        # Stack UNICA compartilhada com o CLI (agent/runtime.py)
         self.interpreter, self.refs = montar_stack(
             self.config, self.emergency, self.logger,
             confirmation_fn=self._confirmar_sensivel,
@@ -78,9 +78,9 @@ class Dashboard:
                                   command=self.executar, style="Accent.TButton")
         self.btn_run.grid(row=0, column=3, **pad)
 
-        ttk.Button(topo, text="PARAR TUDO (emergência)",
+        ttk.Button(topo, text="PARAR TUDO (emergencia)",
                    command=self._parar_tudo).grid(row=0, column=4, **pad)
-        ttk.Button(topo, text="Reset emergência",
+        ttk.Button(topo, text="Reset emergencia",
                    command=self._reset_emergencia).grid(row=0, column=5, **pad)
 
         topo2 = ttk.Frame(self.root)
@@ -97,14 +97,14 @@ class Dashboard:
         meio = ttk.Frame(self.root)
         meio.pack(fill="both", expand=True, padx=10)
 
-        ttk.Label(meio, text="Feed de execução:").pack(anchor="w")
+        ttk.Label(meio, text="Feed de execucao:").pack(anchor="w")
         self.txt_feed = tk.Text(meio, height=16, state="disabled",
                                 font=("Consolas", 10))
         self.txt_feed.pack(fill="both", expand=True)
 
         baixo = ttk.Frame(self.root)
         baixo.pack(fill="x", padx=10, pady=8)
-        self.lbl_stats = ttk.Label(baixo, text="—")
+        self.lbl_stats = ttk.Label(baixo, text="-")
         self.lbl_stats.pack(anchor="w")
         self.lbl_status = ttk.Label(baixo, text="Status: idle")
         self.lbl_status.pack(anchor="e")
@@ -112,7 +112,7 @@ class Dashboard:
 
     # ------------------------------------------------------------------
     def abrir_roteiro(self):
-        # Janela nativa do Windows, já aberta em scripts\
+        # Janela nativa do Windows, ja aberta em scripts\
         path = selecionar_arquivo(pasta="scripts")
         if path:
             self.script_path = path
@@ -124,17 +124,17 @@ class Dashboard:
             messagebox.showwarning("Sem roteiro", "Carregue um roteiro JSON antes.")
             return
         if self.runner_thread and self.runner_thread.is_alive():
-            messagebox.showwarning("Ocupado", "Um roteiro já está em execução.")
+            messagebox.showwarning("Ocupado", "Um roteiro ja esta em execucao.")
             return
         if self.emergency.is_triggered():
-            messagebox.showerror("Emergência ativa",
-                                "Reset a emergência antes de executar.")
+            messagebox.showerror("Emergencia ativa",
+                                "Reset a emergencia antes de executar.")
             return
 
         modo_real = not self.var_dry.get()
         if modo_real and not messagebox.askyesno(
-                "CONFIRMAÇÃO",
-                "Executar em modo REAL (mouse/teclado serão controlados)?\n\n"
+                "CONFIRMACAO",
+                "Executar em modo REAL (mouse/teclado serao controlados)?\n\n"
                 "ESC 3x interrompe tudo."):
             return
 
@@ -147,7 +147,7 @@ class Dashboard:
                 res = self.interpreter.run_file(self.script_path)
                 msg = (f"CONCLUIDO ok={res.ok} executadas={res.executadas} "
                        f"bloqueadas={res.bloqueadas} {res.abort_reason}")
-            except Exception as e:  # noqa: BLE001 — erro vira feed, não crash
+            except Exception as e:  # noqa: BLE001 - erro vira feed, nao crash
                 msg = f"FALHOU: {e}"
             self.events.put(("fim", None, msg))
 
@@ -156,14 +156,14 @@ class Dashboard:
         self.lbl_status.config(text="Status: executando...")
 
     def _confirmar_sensivel(self, ac) -> bool:
-        """Janela modal p/ ação sensível; timeout = negada (fail-safe)."""
+        """Janela modal p/ acao sensivel; timeout = negada (fail-safe)."""
         res = {"ok": False}
         ev = threading.Event()
 
         def pergunta():
             res["ok"] = messagebox.askyesno(
-                "AÇÃO SENSÍVEL",
-                f"Acao: {ac.get('tipo')}\n{ac}\n\nAprovar execução?")
+                "ACAO SENSIVEL",
+                f"Acao: {ac.get('tipo')}\n{ac}\n\nAprovar execucao?")
             ev.set()
         self.root.after(0, pergunta)
         ev.wait(timeout=self.config.confirmation_timeout_s)
@@ -173,10 +173,10 @@ class Dashboard:
     # Recorder + pasta de capturas (janelas nativas do Windows)
     # ------------------------------------------------------------------
     def gravar_cliques(self):
-        """Grava cliques humanos; saiída escolhida em janela nativa
-        já aberta em scripts\\. F12 encerra a gravação."""
+        """Grava cliques humanos; saiida escolhida em janela nativa
+        ja aberta em scripts\\. F12 encerra a gravacao."""
         if self.runner_thread and self.runner_thread.is_alive():
-            messagebox.showwarning("Ocupado", "Aguarde a execução atual terminar.")
+            messagebox.showwarning("Ocupado", "Aguarde a execucao atual terminar.")
             return
         path = selecionar_arquivo(pasta="scripts", salvar=True,
                                   nome_default="gravacao.json")
@@ -204,7 +204,7 @@ class Dashboard:
             rec.stop()  # desarma listeners E restaura a janela do console
             if rec.save_script(path) is None:
                 self.events.put(("fim", None,
-                                 "0 cliques gravados — roteiro vazio NAO salvo"))
+                                 "0 cliques gravados - roteiro vazio NAO salvo"))
             else:
                 self.events.put(("fim", None,
                                  f"gravado: {path} ({rec.click_count()} cliques)"))
@@ -212,7 +212,7 @@ class Dashboard:
         threading.Thread(target=roda, daemon=True).start()
 
     def capturar_agora(self):
-        """Print imediato salvo em capturas\ (janela nativa define a pasta)."""
+        """Print imediato salvo em capturas (janela nativa define a pasta)."""
         def roda():
             try:
                 import datetime as _dt
@@ -220,7 +220,7 @@ class Dashboard:
                 path = self.interpreter._resolve_path(nome)
                 self.refs.screen.capture_to_file(path)
                 self.events.put(("aviso", None, f"print salvo: {path}"))
-            except Exception as e:  # noqa: BLE001 — erro vira feed, não crash
+            except Exception as e:  # noqa: BLE001 - erro vira feed, nao crash
                 self.events.put(("aviso", None, f"print FALHOU: {e}"))
         threading.Thread(target=roda, daemon=True).start()
 
@@ -239,7 +239,7 @@ class Dashboard:
         return os.path.join(".", self.config.capture_dir)
 
     # ------------------------------------------------------------------
-    # Emergência
+    # Emergencia
     # ------------------------------------------------------------------
     def _parar_tudo(self):
         self.emergency.trigger()
@@ -250,7 +250,7 @@ class Dashboard:
         self._feed("emergencia resetada pelo operador")
 
     # ------------------------------------------------------------------
-    # Feed + estatísticas
+    # Feed + estatisticas
     # ------------------------------------------------------------------
     def _drain_events(self):
         try:
