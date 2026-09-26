@@ -12,7 +12,18 @@
 #   - O .exe gerado sai na RAIZ do projeto (um nivel acima de
 #     restrict\): ex. publicar_github.exe.
 #
-# CORRECOES v3 (falha real na 1a execucao, codigo 1 do IExpress):
+# CORRECAO v4 (falha real ao EXECUTAR o .exe gerado, apos v3 corrigir
+# o BUILD): "Erro ao criar o processo com Command.com /c ...bat" +
+# "sistema nao pode encontrar o arquivo especificado". Causa: quando
+# AppLaunched e so o nome do .bat (sem "cmd /c"), o IExpress tenta
+# lancar via COMMAND.COM (interprete DOS de 16 bits) em vez de
+# cmd.exe - COMMAND.COM nao funciona no Windows 64 bits. Confirmado
+# contra DUAS referencias independentes que usam "cmd /c" explicito:
+# guia de empacotamento IExpress (gist h3r/Cool-Retro-Term-Windows10)
+# e o SED do ps2exe-iexpress (github.com/Ramikan/Shelling), que fazem
+# AppLaunched=cmd /c "arquivo" - nunca o nome nu.
+#
+# CORRECOES v3 (falha na CRIACAO do .exe, codigo 1 do IExpress):
 #   1) SED [Options] usa o LITERAL "SourceFiles=SourceFiles" -
 #      antes era "SourceFiles=%SourceFiles%" com a variavel
 #      %SourceFiles% NUNCA definida em [Strings]; o IExpress
@@ -114,7 +125,7 @@ DisplayLicense=
 FinishMessage=
 FriendlyName=$nome
 TargetName=$destExe
-AppLaunched=$nome.bat
+AppLaunched=cmd /c "$nome.bat"
 PostInstallCmd=<None>
 AdminQuietInst=
 UserInstCmd=

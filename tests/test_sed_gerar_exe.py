@@ -88,9 +88,20 @@ def run_all():
     check("Options/UseLongFileName=1 (caminhos longos do TEMP)",
           cp.get("Options", "UseLongFileName") == "1")
 
-    # --- FileLaunched/FILE0 batem com o nome do pacote ---
-    check("Strings/AppLaunched aponta o .bat",
-          cp.get("Strings", "AppLaunched") == "exemplo.bat")
+    # --- AppLaunched: NUNCA nome nu do .bat (bug real 25/09/2026) ---
+    # "AppLaunched=exemplo.bat" faz o IExpress cair no fallback
+    # COMMAND.COM (16 bits), que nao existe no Windows 64 bits ->
+    # "Erro ao criar o processo com Command.com /c ... nao pode
+    # encontrar o arquivo especificado" ao RODAR o .exe (o build
+    # ate funciona; so a execucao falha). Tem que ser "cmd /c" e
+    # o .bat entre aspas.
+    app = cp.get("Strings", "AppLaunched")
+    check("AppLaunched usa cmd /c (nao dispara COMMAND.COM)",
+          app.lower().startswith("cmd /c"))
+    check("AppLaunched referencia o .bat entre aspas",
+          '"exemplo.bat"' in app)
+    check("AppLaunched NAO e o nome nu do .bat (regressao do bug real)",
+          app != "exemplo.bat")
     file0 = cp.get("Strings", "FILE0")
     check('Strings/FILE0 com aspas canonicas', file0 == '"exemplo.bat"')
 
