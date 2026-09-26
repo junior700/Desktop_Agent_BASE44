@@ -1,6 +1,6 @@
 """
-test_control.py — Testes das camadas de controle (mouse/teclado) com fakes.
-Nenhum hardware é tocado; o backend fake registra tudo o que foi chamado.
+test_control.py - Testes das camadas de controle (mouse/teclado) com fakes.
+Nenhum hardware e tocado; o backend fake registra tudo o que foi chamado.
 """
 
 import os
@@ -25,6 +25,12 @@ class FakePyAutoGUI:
 
     def click(self, clicks=1, button="left", interval=0):
         self.calls.append(("click", self.pos, button, clicks))
+
+    def mouseDown(self, button="left"):
+        self.calls.append(("mouseDown", self.pos, button))
+
+    def mouseUp(self, button="left"):
+        self.calls.append(("mouseUp", self.pos, button))
 
     def press(self, key):
         self.calls.append(("press", key))
@@ -54,9 +60,23 @@ def run_all():
     m.click(5, 5, interval_s=0.01)
     check("clique com intervalo nao falha", fake.calls[-1][0] == "click")
 
+    # --- Clique direito ROBUSTO (regressao do bug real 26/09/2026) ---
+    fake2 = FakePyAutoGUI()
+    m2 = MouseController(backend=fake2)
+    m2.right_click(930, 226, settle_s=0.0, hold_s=0.0)  # instantaneo
+    check("clique direito: settle+hold via mouseDown/mouseUp (nao batelada)",
+          fake2.calls == [("moveTo", 930, 226),
+                           ("mouseDown", (930, 226), "right"),
+                           ("mouseUp", (930, 226), "right")])
+    check("clique direito: ordem teleporta->down->up",
+          [c[0] for c in fake2.calls] == ["moveTo", "mouseDown", "mouseUp"])
+    m2.right_click(10, 10)  # defaults: dorme 0.1s no total
+    check("clique direito com defaults tambem funciona",
+          fake2.calls[-2] == ("mouseDown", (10, 10), "right"))
+
     # --- Teclado ---
     fake_kb = FakePyAutoGUI()
-    sem_dormir = lambda s: None  # noqa: E731 — sleep injetado = teste instantâneo
+    sem_dormir = lambda s: None  # noqa: E731 - sleep injetado = teste instant?neo
     kb = KeyboardController(backend=fake_kb, delay_min_ms=50,
                            delay_max_ms=50, sleep_fn=sem_dormir)
     kb.type_text("abc")
@@ -83,6 +103,6 @@ def run_all():
 if __name__ == "__main__":
     rs = run_all()
     for n, ok in rs:
-        print(("✅" if ok else "❌"), n)
+        print(("[OK]" if ok else "[FALHOU]"), n)
     print(f"\n{sum(o for _, o in rs)}/{len(rs)}")
     sys.exit(0 if all(o for _, o in rs) else 1)

@@ -64,6 +64,12 @@ def _grid_cells_por_frame(arvore, texto):
 def run_all():
     results = []
     check = lambda n, c: results.append((n, bool(c)))  # noqa: E731
+
+    # regressao v018: dashboard desativa QuickEdit do console
+    _src = open(os.path.join(os.path.dirname(__file__), "..", "dashboard",
+                             "app.py"), encoding="ascii").read()
+    check("dashboard: importa disable_quickedit e CHAMA quickedit_off()",
+          "disable_quickedit" in _src and "quickedit_off()" in _src)
     t = _texto()
 
     # --- AST valido (arquivo Windows-only, mas a SINTAXE e Python puro) ---

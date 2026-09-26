@@ -1,13 +1,13 @@
 """
-recorder.py — Human Recorder.
+recorder.py - Human Recorder.
 
-Grava ações humanas e gera um ROTEIRO JSON no mesmo schema do interpretador.
+Grava acoes humanas e gera um ROTEIRO JSON no mesmo schema do interpretador.
 
-DIRETRIZ DO PROJETO: grava apenas CLIQUES (coordenada + botão) e o
+DIRETRIZ DO PROJETO: grava apenas CLIQUES (coordenada + botao) e o
 INTERVALO DE TEMPO entre cliques. Movimento do mouse entre cliques
-e teclas digitadas NÃO são gravados.
+e teclas digitadas NAO sao gravados.
 
-Saída:
+Saida:
     {"nome": "...", "acoes": [
         {"tipo": "clicar", "x": 100, "y": 200, "botao": "left"},
         {"tipo": "aguardar", "segundos": 1.42},
@@ -15,15 +15,15 @@ Saída:
         ...
     ]}
 
-Duplo clique: 2 cliques no mesmo ponto (tolerância 4px) em menos de
-double_click_window_ms, botão esquerdo.
+Duplo clique: 2 cliques no mesmo ponto (tolerancia 4px) em menos de
+double_click_window_ms, botao esquerdo.
 
-TECLAS (conforme diretriz do usuário):
-    F12 -> INICIA a gravação de cliques (e MINIMIZA esta janela)
-    F10 -> ENCERRA a gravação e finaliza (e RESTAURA esta janela)
+TECLAS (conforme diretriz do usuario):
+    F12 -> INICIA a gravacao de cliques (e MINIMIZA esta janela)
+    F10 -> ENCERRA a gravacao e finaliza (e RESTAURA esta janela)
 
 Fluxo: arm() instala os listeners (estado "armado"); F12 liga a captura;
-F10 desliga e encerra. ESC 3x dispara a emergência global a qualquer momento.
+F10 desliga e encerra. ESC 3x dispara a emergencia global a qualquer momento.
 """
 
 from __future__ import annotations
@@ -54,6 +54,40 @@ def minimize_console() -> None:
         pass
 
 
+# Flags do console do Windows (Win32): modo de edicao rapida.
+ENABLE_QUICK_EDIT = 0x0040
+ENABLE_INSERT_MODE = 0x0020
+ENABLE_EXTENDED_FLAGS = 0x0080
+
+
+def disable_quickedit() -> bool:
+    """Desativa o QuickEdit do console. Retorna True se aplicou.
+
+    BUG REAL (26/09/2026, modo REAL): um unico clique do usuario na
+    area do console ativa o modo SELECAO do QuickEdit e congela a
+    proxima escrita de stdout - o processo INTEIRO aparenta travar
+    (o ESC 3x dispara a flag, mas o main thread esta preso no print;
+    so solta quando a janela do console recebe uma tecla). Desativar
+    ENABLE_QUICK_EDIT_MODE elimina o congelamento por clique. Fora
+    do Windows ou sem console retorna False (no-op seguro).
+    """
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        if not kernel32.GetConsoleWindow():
+            return False
+        # STD_INPUT_HANDLE = -10
+        hinput = kernel32.GetStdHandle(-10)
+        modo = ctypes.c_uint()
+        if not kernel32.GetConsoleMode(hinput, ctypes.byref(modo)):
+            return False
+        novo = ((modo.value & ~ENABLE_QUICK_EDIT &
+                 ~ENABLE_INSERT_MODE) | ENABLE_EXTENDED_FLAGS)
+        return bool(kernel32.SetConsoleMode(hinput, novo))
+    except Exception:  # noqa: BLE001 - no-op fora do Windows
+        return False
+
+
 def restore_console() -> None:
     """Restaura a janela do console atual (nao faz nada fora do Windows)."""
     try:
@@ -77,7 +111,7 @@ class HumanRecorder:
                 "restore": staticmethod(restore_console),
             })()
         self.window_ctl = window_ctl
-        self._clock = clock            # injetável p/ testes
+        self._clock = clock            # injetavel p/ testes
         self._events: list[dict] = []  # [{"t": s, "x": int, "y": int, "botao": str}]
         self._listener = None
         self._kb_listener = None
@@ -94,11 +128,11 @@ class HumanRecorder:
                              "x": int(x), "y": int(y), "botao": botao})
 
     # ------------------------------------------------------------------
-    # Gravação real (Windows) — pynput.
+    # Gravacao real (Windows) - pynput.
     # ------------------------------------------------------------------
     def arm(self) -> bool:
         """
-        Instala os listeners e fica ARMADO: aguardando F12 para começar
+        Instala os listeners e fica ARMADO: aguardando F12 para comecar
         a capturar cliques e F10 para encerrar. Retorna True se armado.
         """
         if self._armed and not self._stopped:
@@ -117,7 +151,7 @@ class HumanRecorder:
 
         def on_click(x, y, button, pressed):
             if not self._recording or not pressed:
-                return  # só captura enquanto grava; só o pressionar conta
+                return  # so captura enquanto grava; so o pressionar conta
             botao = "right" if "right" in str(button) else \
                     "middle" if "middle" in str(button) else "left"
             self.record_click(x, y, botao)
@@ -133,7 +167,7 @@ class HumanRecorder:
                 self._recording = False
                 self.stop()  # desliga listeners; _stopped sinaliza o fim
             elif nome == "escape" and self.emergency:
-                self.emergency.register_press()  # ESC 3x também vale aqui
+                self.emergency.register_press()  # ESC 3x tambem vale aqui
 
         self._listener = mouse.Listener(on_click=on_click)
         self._listener.daemon = True
@@ -145,7 +179,7 @@ class HumanRecorder:
         return True
 
     def start(self) -> bool:
-        """Arma E começa a gravar imediatamente (sem aguardar F12)."""
+        """Arma E comeca a gravar imediatamente (sem aguardar F12)."""
         if not self.arm():
             return False
         self._events.clear()
@@ -183,18 +217,18 @@ class HumanRecorder:
         return len(self._events)
 
     # ------------------------------------------------------------------
-    # Conversão eventos -> roteiro JSON
+    # Conversao eventos -> roteiro JSON
     # ------------------------------------------------------------------
     def build_script(self, nome: str = "gravacao") -> dict:
         """
         Gera o roteiro:
         - cada clique vira 'clicar'/'clique_direito'/'duplo_clique'
-        - o intervalo real entre ações vira 'aguardar' (2 casas decimais)
+        - o intervalo real entre acoes vira 'aguardar' (2 casas decimais)
         """
         eventos = sorted(self._events, key=lambda e: e["t"])
         janela = self.config.double_click_window_ms / 1000.0
 
-        # 1ª passada: agrupa duplos cliques.
+        # 1? passada: agrupa duplos cliques.
         # Cada entrada: (idx_inicio, idx_fim_exclusivo, acao)
         passos: list[tuple[int, int, dict]] = []
         i = 0
@@ -216,7 +250,7 @@ class HumanRecorder:
                                 "botao": ev["botao"]}))
                 i += 1
 
-        # 2ª passada: insere 'aguardar' entre passos consecutivos.
+        # 2? passada: insere 'aguardar' entre passos consecutivos.
         acoes: list[dict] = []
         for pos, (ini, fim, acao) in enumerate(passos):
             if pos > 0:
@@ -229,8 +263,8 @@ class HumanRecorder:
     def save_script(self, path: str, nome: str = "gravacao") -> str | None:
         """
         Salva o roteiro. Retorna o caminho, ou None se NADA foi gravado
-        (0 cliques: um roteiro vazio é inválido para o interpretador —
-        não criar arquivo inútil é mais honesto que criar um que falha).
+        (0 cliques: um roteiro vazio e invalido para o interpretador -
+        nao criar arquivo inutil e mais honesto que criar um que falha).
         """
         script = self.build_script(nome)
         if not script["acoes"]:

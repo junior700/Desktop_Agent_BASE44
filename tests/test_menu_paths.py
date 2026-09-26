@@ -149,6 +149,26 @@ def run_all():
     for e in erros:
         check("  erro: " + e, False)
 
+    # === QuickEdit (bug real 26/09/2026: clique do usuario no console
+    #     congela o processo - 'deu uma bloqueada', ESC 3x pareceu morto) ===
+    rec_mod = open(os.path.join(BASE, "agent", "recorder", "recorder.py"),
+                   encoding="ascii").read()
+    check("console: disable_quickedit existe no recorder",
+          "def disable_quickedit" in rec_mod and
+          "ENABLE_QUICK_EDIT" in rec_mod and
+          "ENABLE_EXTENDED_FLAGS" in rec_mod)
+    check("console: main.py DESATIVA QuickEdit antes de tudo",
+          "disable_quickedit()" in fonte and
+          fonte.index("disable_quickedit()") <
+          fonte.index('ap = argparse.ArgumentParser'))
+    check("console: dashboard tambem desativa QuickEdit",
+          "quickedit_off()" in open(os.path.join(BASE, "dashboard", "app.py"),
+                                    encoding="ascii").read())
+    check("[4]: retorno do emergencia.start() VERIFICADO (listener)",
+          "if not emergencia.start():" in fonte)
+    check("[4]: banner avisa kill switch do canto (independe de foco)",
+          "canto sup. esquerdo" in fonte)
+
     # === modo REAL (opcao [4]): congelamento + UX (bug real 26/09/2026,
     #     o agente travou ANTES do primeiro clique, console parado) ===
     rt = open(os.path.join(BASE, "agent", "runtime.py"),

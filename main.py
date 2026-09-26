@@ -30,6 +30,7 @@ from agent.vision.ocr import ScreenReader, TesseractOCREngine
 from agent.vision.template_match import TemplateMatcher
 from agent.runtime import montar_stack
 from agent.recorder.recorder import minimize_console, restore_console
+from agent.recorder.recorder import disable_quickedit
 
 
 def confirmar_terminal(ac):
@@ -77,6 +78,9 @@ def cmd_gravar(saida: str | None) -> None:
 
 
 def main():
+    # QuickEdit OFF: um clique do usuario no console NAO pode congelar
+    # o processo no meio da execucao (bug real 26/09/2026).
+    disable_quickedit()
     ap = argparse.ArgumentParser(description="Agente de desktop")
     ap.add_argument("roteiro", nargs="?", help="arquivo de roteiro JSON")
     ap.add_argument("--real", action="store_true",
@@ -117,7 +121,9 @@ def main():
     emergencia = EmergencyStop(
         presses_required=config.emergency_esc_presses,
         window_s=config.emergency_window_s)
-    emergencia.start()
+    if not emergencia.start():
+        print("AVISO: listener do ESC 3x indisponivel (pynput ausente).")
+        print("       Aborto alternativo: leve o mouse ao canto sup. esquerdo.")
 
     logger = AuditLogger(config.audit_db_path)
     interpreter, _refs = montar_stack(config, emergencia, logger,
@@ -126,6 +132,7 @@ def main():
     if args.real:
         print("*** MODO REAL: o agente vai controlar mouse e teclado. ***")
         print("*** ESC 3x interrompe imediatamente. ***")
+        print("*** Aborto alternativo: mouse no canto sup. esquerdo. ***")
         resp = input("Continuar? [s/N] ").strip().lower()
         if resp != "s":
             print("Abortado pelo operador.")

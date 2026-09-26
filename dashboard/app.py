@@ -33,6 +33,7 @@ from agent.ui.native_dialogs import selecionar_arquivo, selecionar_pasta
 # Recorder (ctypes GetConsoleWindow + ShowWindow), reaproveitado aqui
 # para nao duplicar codigo Win32 (DRY).
 from agent.recorder.recorder import minimize_console, restore_console
+from agent.recorder.recorder import disable_quickedit
 
 
 class Dashboard:
@@ -48,9 +49,13 @@ class Dashboard:
         if window_ctl is None:
             window_ctl = type("ConsoleWindowCtl", (), {
                 "minimize": staticmethod(minimize_console),
+                "quickedit_off": staticmethod(disable_quickedit),
                 "restore": staticmethod(restore_console),
             })()
         self.window_ctl = window_ctl
+        # QuickEdit OFF antes de minimizar: clique do usuario na janela
+        # do console nao pode congelar nada (mesma protecao do CLI).
+        self.window_ctl.quickedit_off()
         self.window_ctl.minimize()
         root.protocol("WM_DELETE_WINDOW", self._ao_fechar)
 

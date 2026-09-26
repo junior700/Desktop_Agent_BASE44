@@ -13,3 +13,4 @@ v014_2026-09-26_1545;2026-09-26 15:45;agente.ps1|tests/test_menu_agente.py;verif
 v015_2026-09-26_1549;2026-09-26 15:49;agente.ps1|instalar_pytesseract.ps1|tests/test_menu_agente.py;opcao10-instalar-pytesseract-se-ausente
 v016_2026-09-26_1557;2026-09-26 15:57;main.py|tests/test_menu_paths.py|tests/run_all.py;recorder-triggered-attrerror-linter-menu-paths
 v017_2026-09-26_1619;2026-09-26 16:19;agente.ps1|main.py|agent/runtime.py|tests/test_menu_agente.py|tests/test_menu_paths.py;real-mode-congelamento-uia-minimiza-console-confirm-unica
+v018_2026-09-26_1633;2026-09-26 16:33;agent/recorder/recorder.py|agent/control/mouse.py|main.py|dashboard/app.py|tests/test_control.py|tests/test_menu_paths.py|tests/test_dashboard_ui.py;quickedit-congelamento-rightclick-settle-hold
