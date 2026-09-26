@@ -29,13 +29,30 @@ from agent.safety.emergency_stop import EmergencyStop
 from agent.safety.logger import AuditLogger
 from agent.runtime import montar_stack
 from agent.ui.native_dialogs import selecionar_arquivo, selecionar_pasta
+# minimize/restore da janela do console - mesmo mecanismo do Human
+# Recorder (ctypes GetConsoleWindow + ShowWindow), reaproveitado aqui
+# para nao duplicar codigo Win32 (DRY).
+from agent.recorder.recorder import minimize_console, restore_console
 
 
 class Dashboard:
-    def __init__(self, root: tk.Tk):
+    def __init__(self, root: tk.Tk, window_ctl=None):
         self.root = root
         root.title("Desktop Agent - Painel de Controle")
-        root.geometry("880x560")
+        root.geometry("900x580")
+        root.minsize(760, 480)
+
+        # controlador da janela do console: minimiza agora que o
+        # dashboard esta ativo, restaura quando o usuario fechar
+        # (injetavel para testes - mesmo padrao do HumanRecorder)
+        if window_ctl is None:
+            window_ctl = type("ConsoleWindowCtl", (), {
+                "minimize": staticmethod(minimize_console),
+                "restore": staticmethod(restore_console),
+            })()
+        self.window_ctl = window_ctl
+        self.window_ctl.minimize()
+        root.protocol("WM_DELETE_WINDOW", self._ao_fechar)
 
         self.config = AgentConfig()
         self.config.validate()
@@ -59,43 +76,67 @@ class Dashboard:
         self.root.after(200, self._drain_events)
 
     # ------------------------------------------------------------------
+    def _ao_fechar(self):
+        """Restaura a janela do console (minimizada ao abrir) e fecha."""
+        self.window_ctl.restore()
+        self.root.destroy()
+
+    # ------------------------------------------------------------------
     def _build_ui(self):
+        """Botoes agrupados por proposito (ttk.LabelFrame).
+
+        Bug real corrigido (26/09/2026, screenshot do usuario): o
+        botao 'Capturar tela agora' e o rotulo lbl_capdir ocupavam a
+        MESMA celula do grid (row=0, column=2 em topo2) - colisao
+        real do Tkinter, as duas legendas ficavam desenhadas uma
+        sobre a outra (o texto 'embaralhado' na tela). Agrupar em
+        LabelFrame tambem elimina o excesso de texto repetido em
+        cada botao (ex.: '(emergencia)' 2x) - o titulo do grupo ja
+        da o contexto.
+        """
         pad = {"padx": 6, "pady": 4}
 
-        topo = ttk.Frame(self.root)
-        topo.pack(fill="x", padx=10, pady=8)
+        grp_roteiro = ttk.LabelFrame(self.root, text="Roteiro")
+        grp_roteiro.pack(fill="x", padx=10, pady=(8, 4))
 
-        ttk.Button(topo, text="Abrir roteiro...",
+        ttk.Button(grp_roteiro, text="Abrir roteiro...",
                    command=self.abrir_roteiro).grid(row=0, column=0, **pad)
-        self.lbl_arquivo = ttk.Label(topo, text="(nenhum roteiro carregado)")
-        self.lbl_arquivo.grid(row=0, column=1, **pad)
+        self.lbl_arquivo = ttk.Label(grp_roteiro,
+                                     text="(nenhum roteiro carregado)")
+        self.lbl_arquivo.grid(row=0, column=1, sticky="w", **pad)
 
         self.var_dry = tk.BooleanVar(value=True)
-        ttk.Checkbutton(topo, text="Dry-run (somente simular)",
+        ttk.Checkbutton(grp_roteiro, text="Dry-run (simular)",
                         variable=self.var_dry).grid(row=0, column=2, **pad)
 
-        self.btn_run = ttk.Button(topo, text="EXECUTAR",
+        self.btn_run = ttk.Button(grp_roteiro, text="EXECUTAR",
                                   command=self.executar, style="Accent.TButton")
         self.btn_run.grid(row=0, column=3, **pad)
+        grp_roteiro.columnconfigure(1, weight=1)
 
-        ttk.Button(topo, text="PARAR TUDO (emergencia)",
-                   command=self._parar_tudo).grid(row=0, column=4, **pad)
-        ttk.Button(topo, text="Reset emergencia",
-                   command=self._reset_emergencia).grid(row=0, column=5, **pad)
+        grp_emerg = ttk.LabelFrame(self.root, text="Emergencia (ou ESC 3x)")
+        grp_emerg.pack(fill="x", padx=10, pady=4)
 
-        topo2 = ttk.Frame(self.root)
-        topo2.pack(fill="x", padx=10, pady=2)
-        ttk.Button(topo2, text="Gravar cliques (Recorder)",
+        ttk.Button(grp_emerg, text="PARAR TUDO",
+                   command=self._parar_tudo).grid(row=0, column=0, **pad)
+        ttk.Button(grp_emerg, text="Resetar",
+                   command=self._reset_emergencia).grid(row=0, column=1, **pad)
+
+        grp_cap = ttk.LabelFrame(self.root, text="Capturas e gravacao")
+        grp_cap.pack(fill="x", padx=10, pady=4)
+
+        ttk.Button(grp_cap, text="Gravar cliques...",
                    command=self.gravar_cliques).grid(row=0, column=0, **pad)
-        ttk.Button(topo2, text="Pasta de capturas...",
-                   command=self.escolher_pasta_capturas).grid(row=0, column=1, **pad)
-        ttk.Button(topo2, text="Capturar tela agora",
-                   command=self.capturar_agora).grid(row=0, column=2, **pad)
-        self.lbl_capdir = ttk.Label(topo2, text=self._nome_capdir())
-        self.lbl_capdir.grid(row=0, column=2, **pad)
+        ttk.Button(grp_cap, text="Capturar tela",
+                   command=self.capturar_agora).grid(row=0, column=1, **pad)
+        ttk.Button(grp_cap, text="Pasta de capturas...",
+                   command=self.escolher_pasta_capturas).grid(row=0, column=2, **pad)
+        self.lbl_capdir = ttk.Label(grp_cap, text=self._nome_capdir())
+        self.lbl_capdir.grid(row=0, column=3, sticky="w", **pad)
+        grp_cap.columnconfigure(3, weight=1)
 
         meio = ttk.Frame(self.root)
-        meio.pack(fill="both", expand=True, padx=10)
+        meio.pack(fill="both", expand=True, padx=10, pady=(4, 0))
 
         ttk.Label(meio, text="Feed de execucao:").pack(anchor="w")
         self.txt_feed = tk.Text(meio, height=16, state="disabled",

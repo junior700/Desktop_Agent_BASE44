@@ -16,6 +16,7 @@ TESTES = [
     "test_decision.py",
     "test_smoke.py",
     "test_vision.py",
+    "test_dashboard_ui.py",
     "test_sed_gerar_exe.py",
     "test_sincronizar_token.py",
     "test_stack.py",
