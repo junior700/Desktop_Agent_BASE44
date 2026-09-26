@@ -1,24 +1,24 @@
 """
-interpreter.py — Validador e executor de roteiros JSON.
+interpreter.py - Validador e executor de roteiros JSON.
 
-Pipeline de CADA ação:
-    validar schema da ação -> GuardRails.validate() -> executar (ou logar em dry_run)
+Pipeline de CADA acao:
+    validar schema da acao -> GuardRails.validate() -> executar (ou logar em dry_run)
 
-Política fail-safe:
-- Ação bloqueada pelo guardrail = roteiro ABORTADO (não pula e segue).
-- Parada de emergência = aborto imediato.
-- Ação sensível: em modo real exige confirmação humana (callback injetável).
-- Em dry_run nada executa; tudo é validado e logado com executed=False.
+Politica fail-safe:
+- Acao bloqueada pelo guardrail = roteiro ABORTADO (nao pula e segue).
+- Parada de emergencia = aborto imediato.
+- Acao sensivel: em modo real exige confirmacao humana (callback injetavel).
+- Em dry_run nada executa; tudo e validado e logado com executed=False.
 
-Tipos de ação suportados:
+Tipos de acao suportados:
     mover_mouse, clicar, duplo_clique, clique_direito,
     tecla, digitar, aguardar, capturar_tela, ler_texto,
     se (condicional), beep, log, clicar_texto, clicar_cor,
-    apagar_arquivo*, fechar_aplicacao*, executar_shell*   (* = sensível)
+    apagar_arquivo*, fechar_aplicacao*, executar_shell*   (* = sensivel)
 
-Condições: texto_na_tela, imagem_na_tela, cor_na_tela, forma_na_tela,
+Condicoes: texto_na_tela, imagem_na_tela, cor_na_tela, forma_na_tela,
 sempre. clicar_texto/clicar_cor localizam o alvo NA TELA na hora e o
-clique resultante é REVALIDADO pelo guardrail (nunca clica sem validação).
+clique resultante e REVALIDADO pelo guardrail (nunca clica sem validacao).
 """
 
 from __future__ import annotations
@@ -30,9 +30,55 @@ from dataclasses import dataclass
 
 from agent.config import AgentConfig
 from agent.safety.guardrails import GuardRails, Verdict
+
+
+def combina_janela(alvo: str, titulo: str, exe: str) -> bool:
+    """True se o alvo casa com o TITULO ou com o EXECUTAVEL da janela.
+
+    Bug real (26/09/2026): usuario PT-BR pediu fechar 'notepad' - no
+    Windows em portugues o titulo da janela e 'Sem titulo - Bloco de
+    Notas' e a palavra 'notepad' so aparece no nome do EXECUTAVEL
+    (NOTEPAD.EXE). Matching por titulo so falhava; agora compara
+    os dois (substring, sem sensibilidade a caixa).
+    """
+    alvo = (alvo or "").lower().strip()
+    if not alvo:
+        return False
+    if alvo in (titulo or "").lower():
+        return True
+    return alvo in (exe or "").lower()
+
+
+def _exe_do_processo(pid: int) -> str:
+    """Nome do executavel do processo (ex.: 'NOTEPAD.EXE').
+
+    Retorna string vazia fora do Windows ou sem permissao - a funcao
+    e so um bonus de matching, nunca pode derrubar o fluxo.
+    Usa ctypes (kernel32), sem dependencia nova.
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        kernel32 = ctypes.windll.kernel32
+        h = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
+                                 False, int(pid))
+        if not h:
+            return ""
+        try:
+            buf = ctypes.create_unicode_buffer(1024)
+            size = wintypes.DWORD(len(buf))
+            if kernel32.QueryFullProcessImageNameW(h, 0, buf,
+                                                    ctypes.byref(size)):
+                return os.path.basename(buf.value)
+        finally:
+            kernel32.CloseHandle(h)
+    except Exception:  # noqa: BLE001 - fora do Windows ou pid morto
+        pass
+    return ""
 from agent.safety.logger import AuditLogger
 
-# Campos obrigatórios por tipo de ação (validação manual, sem dependências).
+# Campos obrigatorios por tipo de acao (validacao manual, sem dependencias).
 _REQUIRED = {
     "mover_mouse": ("x", "y"),
     "clicar": ("x", "y"),
@@ -52,8 +98,8 @@ KNOWN_TYPES = set(_REQUIRED) | {
     "aguardar", "capturar_tela", "ler_texto", "beep", "log",
 }
 
-# Ações que o guardrail também conhece mas vêm de condicionais:
-# (nenhuma — condições são avaliadas aqui, sem passar pelo guardrail)
+# Acoes que o guardrail tambem conhece mas vem de condicionais:
+# (nenhuma - condicoes sao avaliadas aqui, sem passar pelo guardrail)
 
 
 @dataclass
@@ -76,13 +122,13 @@ class ScriptInterpreter:
                  sleep_fn=time.sleep, analyzer=None):
         """
         mouse/keyboard/screen : controllers (reais ou fakes de teste)
-        reader : ScreenReader (OCR) — pode ser None (desabilita ler_texto/se texto)
-        matcher : TemplateMatcher — pode ser None (desabilita se imagem)
-        analyzer : ScreenAnalyzer — cor/geometria; None desabilita cor_na_tela
+        reader : ScreenReader (OCR) - pode ser None (desabilita ler_texto/se texto)
+        matcher : TemplateMatcher - pode ser None (desabilita se imagem)
+        analyzer : ScreenAnalyzer - cor/geometria; None desabilita cor_na_tela
                   e forma_na_tela/clicar_cor
-        confirmation_fn : (action) -> bool, chamada p/ ações sensíveis em modo real
+        confirmation_fn : (action) -> bool, chamada p/ acoes sensiveis em modo real
         on_event : (fase, acao, verdict) callback p/ dashboard ao vivo
-        sleep_fn : injetável p/ testes rápidos
+        sleep_fn : injetavel p/ testes rapidos
         """
         self.config = config
         self.guardrails = guardrails
@@ -98,7 +144,7 @@ class ScriptInterpreter:
         self._sleep = sleep_fn
 
     # ==================================================================
-    # VALIDAÇÃO DO ROTEIRO (antes de qualquer execução)
+    # VALIDACAO DO ROTEIRO (antes de qualquer execucao)
     # ==================================================================
     def validate_script(self, script: dict) -> list[str]:
         """Valida a estrutura completa. Retorna lista de erros (vazia = ok)."""
@@ -109,7 +155,7 @@ class ScriptInterpreter:
             erros.append("campo 'nome' ausente ou vazio")
         acoes = script.get("acoes")
         if not isinstance(acoes, list) or not acoes:
-            erros.append("campo 'acoes' ausente, vazio ou nao é lista")
+            erros.append("campo 'acoes' ausente, vazio ou nao e lista")
             return erros
         for i, ac in enumerate(acoes):
             erros += self._validate_action(ac, f"acao[{i}]")
@@ -178,7 +224,7 @@ class ScriptInterpreter:
         return []
 
     # ==================================================================
-    # EXECUÇÃO
+    # EXECUCAO
     # ==================================================================
     def run_file(self, path: str) -> ScriptResult:
         with open(path, "r", encoding="utf-8") as f:
@@ -208,7 +254,7 @@ class ScriptInterpreter:
         """Roda a lista. Retorna (executadas, bloqueadas, ok, motivo_abort)."""
         executadas = bloqueadas = 0
         for ac in acoes:
-            # Condicionais são avaliadas e seus ramos executados aqui.
+            # Condicionais sao avaliadas e seus ramos executados aqui.
             if ac.get("tipo") == "se":
                 ramos = self._evaluate_branches(ac)
                 if ramos is None:  # erro de leitura de tela -> aborta
@@ -227,7 +273,7 @@ class ScriptInterpreter:
                 self._emit("bloqueada", ac, verdict)
                 return (executadas, bloqueadas + 1, False, verdict.reason)
 
-            # Ação sensível em modo real exige confirmação humana.
+            # Acao sensivel em modo real exige confirmacao humana.
             if verdict.requires_confirmation and not self.config.dry_run:
                 if self.confirmation_fn is None or not self.confirmation_fn(ac):
                     self._log(ac, False, False, "acao sensivel sem confirmacao humana")
@@ -240,22 +286,22 @@ class ScriptInterpreter:
             else:
                 try:
                     self._execute(ac)
-                except Exception as e:  # noqa: BLE001 — erro vira log + aborto
+                except Exception as e:  # noqa: BLE001 - erro vira log + aborto
                     self._log(ac, True, False, f"ERRO de execucao: {e}")
                     return (executadas, bloqueadas + 1, False, str(e))
                 self._log(ac, True, True, "ok")
                 self._emit("executada", ac, verdict)
 
             executadas += 1
-            # Intervalo mínimo entre ações (humanização + rate limit).
+            # Intervalo minimo entre acoes (humanizacao + rate limit).
             self._sleep_seguro(self.config.min_delay_between_actions_ms / 1000.0)
 
         return (executadas, bloqueadas, True, "")
 
     def _sleep_seguro(self, segundos: float) -> None:
         """
-        Dorme em fatias de 0.2s, checando a emergência a cada fatia.
-        Um 'aguardar' de 3600s responde ao ESC 3x em até 0.2s.
+        Dorme em fatias de 0.2s, checando a emergencia a cada fatia.
+        Um 'aguardar' de 3600s responde ao ESC 3x em ate 0.2s.
         """
         resta = max(0.0, float(segundos))
         while resta > 0:
@@ -269,7 +315,7 @@ class ScriptInterpreter:
     def _resolve_path(self, caminho: str) -> str:
         """
         Caminho relativo -> dentro de config.capture_dir (criando a pasta).
-        Caminho absoluto -> usado como está.
+        Caminho absoluto -> usado como esta.
         """
         if os.path.isabs(caminho):
             return caminho
@@ -283,7 +329,7 @@ class ScriptInterpreter:
 
     # ------------------------------------------------------------------
     def _evaluate_branches(self, ac_se) -> list | None:
-        """Avalia a condição; retorna a lista de ações do ramo (entao/senao)."""
+        """Avalia a condicao; retorna a lista de acoes do ramo (entao/senao)."""
         cond = ac_se["condicao"]
         t = cond.get("tipo")
         if t == "sempre":
@@ -314,7 +360,7 @@ class ScriptInterpreter:
 
     # ------------------------------------------------------------------
     def _execute(self, ac) -> None:
-        """Executa a ação REAL (chegou aqui já validada e liberada)."""
+        """Executa a acao REAL (chegou aqui ja validada e liberada)."""
         tipo = ac["tipo"]
         if tipo == "mover_mouse":
             self.mouse.move(ac["x"], ac["y"])
@@ -351,7 +397,7 @@ class ScriptInterpreter:
             except ImportError:
                 print("\a", end="", flush=True)  # fallback fora do Windows
         elif tipo == "log":
-            pass  # a mensagem já vai no audit log (snapshot)
+            pass  # a mensagem ja vai no audit log (snapshot)
         elif tipo == "clicar_texto":
             if self.reader is None:
                 raise RuntimeError("OCR nao configurado")
@@ -374,14 +420,14 @@ class ScriptInterpreter:
             self._close_window(str(ac["janela"]))
         elif tipo == "executar_shell":
             self._run_shell(str(ac["comando"]))
-        else:  # nunca deve acontecer (validação já cobriu)
+        else:  # nunca deve acontecer (validacao ja cobriu)
             raise RuntimeError(f"tipo nao implementado: {tipo}")
 
     def _clicar_validado(self, centro: tuple[int, int], origem: str) -> None:
         """
         Clique com coordenada resolvida em RUNTIME (OCR/cor/geometria).
-        Monta um 'clicar' sintético e passa pelo guardrail DE NOVO:
-        a regra 'toda ação passa por validate()' nunca é burlada.
+        Monta um 'clicar' sintetico e passa pelo guardrail DE NOVO:
+        a regra 'toda acao passa por validate()' nunca e burlada.
         """
         sintetico = {"tipo": "clicar", "x": int(centro[0]), "y": int(centro[1]),
                      "_origem": origem}
@@ -392,7 +438,7 @@ class ScriptInterpreter:
         self.mouse.click(sintetico["x"], sintetico["y"])
 
     # ------------------------------------------------------------------
-    # Ações sensíveis — implementações com verificação extra própria.
+    # Acoes sensiveis - implementacoes com verificacao extra propria.
     # ------------------------------------------------------------------
     def _delete_file(self, caminho: str) -> None:
         real = os.path.abspath(caminho)
@@ -406,20 +452,32 @@ class ScriptInterpreter:
         os.remove(real)
 
     def _close_window(self, titulo: str) -> None:
-        """Fecha janela por substring do título (pywinauto)."""
+        """Fecha janela por substring do TITULO ou do EXECUTAVEL.
+
+        Duas passadas: primeiro so janelas VISIVEIS (evita fechar
+        uma janela oculta antes da visivel quando ha varias), depois
+        todas. Casamento via combina_janela().
+        """
         from pywinauto import Desktop  # import tardio
-        alvo = titulo.lower()
-        for w in Desktop(backend="uia").windows():
-            try:
-                if alvo in w.window_text().lower():
-                    w.close()
-                    return
-            except Exception:  # noqa: BLE001 — janelas podem sumir no meio
-                continue
-        raise RuntimeError(f"janela nao encontrada: '{titulo}'")
+        janelas = list(Desktop(backend="uia").windows())
+        for so_visiveis in (True, False):
+            for w in janelas:
+                try:
+                    if so_visiveis and not w.is_visible():
+                        continue
+                    exe = _exe_do_processo(w.process_id())
+                    if combina_janela(titulo, w.window_text(), exe):
+                        w.close()
+                        return
+                except Exception:  # noqa: BLE001 - janelas somem no meio
+                    continue
+        raise RuntimeError(
+            f"janela nao encontrada: '{titulo}'. O alvo casa por substring "
+            f"com o TITULO da janela ou com o EXECUTAVEL do processo "
+            f"(ex.: 'bloco de notas' ou 'notepad')")
 
     def _run_shell(self, comando: str) -> None:
-        """Executa comando via subprocess (shell=False, sem elevação)."""
+        """Executa comando via subprocess (shell=False, sem elevacao)."""
         import shlex
         import subprocess
         partes = shlex.split(comando, posix=False)
@@ -435,5 +493,5 @@ class ScriptInterpreter:
         if self.on_event is not None:
             try:
                 self.on_event(fase, ac, verdict)
-            except Exception:  # noqa: BLE001 — dashboard nunca derruba o agente
+            except Exception:  # noqa: BLE001 - dashboard nunca derruba o agente
                 pass

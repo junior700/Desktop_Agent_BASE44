@@ -1,6 +1,6 @@
 """
-test_interpreter.py — Testes do interpretador de roteiros.
-Tudo com fakes (mouse/teclado/tela/OCR); nenhum hardware é tocado.
+test_interpreter.py - Testes do interpretador de roteiros.
+Tudo com fakes (mouse/teclado/tela/OCR); nenhum hardware e tocado.
 """
 
 import os
@@ -14,7 +14,8 @@ from agent.safety.guardrails import GuardRails
 from agent.safety.emergency_stop import EmergencyStop
 from agent.safety.logger import AuditLogger
 from agent.interpreter.interpreter import (
-    ScriptInterpreter, ScriptValidationError)
+    ScriptInterpreter, ScriptValidationError,
+    combina_janela, _exe_do_processo)
 from agent.vision.ocr import ScreenReader, FakeOCREngine
 
 
@@ -73,7 +74,7 @@ def run_all():
     results = []
     check = lambda n, c: results.append((n, bool(c)))  # noqa: E731
 
-    # --- 1. Validação de roteiro ---
+    # --- 1. Validacao de roteiro ---
     itp, *_ = make_interp()
     e = itp.validate_script({"nome": "ok", "acoes": [{"tipo": "aguardar", "segundos": 1}]})
     check("roteiro valido sem erros", e == [])
@@ -88,7 +89,7 @@ def run_all():
     e = itp.validate_script({"nome": "x", "acoes": [{"tipo": "aguardar"}]})
     check("aguardar sem segundos usa default 1s (valido)", e == [])
 
-    # --- 2. Dry-run: valida e loga, NÃO executa ---
+    # --- 2. Dry-run: valida e loga, NAO executa ---
     itp, mouse, kb, screen, log, *_ = make_interp()
     res = itp.run_script({"nome": "t", "acoes": [
         {"tipo": "clicar", "x": 100, "y": 100},
@@ -122,7 +123,7 @@ def run_all():
           and salvas[0].replace("\\", "/").endswith("capturas/x.png"))
     check("log registra executadas", log.stats()["executed"] == 6)
 
-    # --- 4. Ação bloqueada ABORTA o roteiro ---
+    # --- 4. Acao bloqueada ABORTA o roteiro ---
     itp, mouse, *_ = make_interp(dry_run=False)
     res = itp.run_script({"nome": "t", "acoes": [
         {"tipo": "clicar", "x": 99999, "y": 10},   # fora da tela
@@ -163,7 +164,7 @@ def run_all():
     }]})
     check("condicional por imagem funciona", ("type", "IMG_OK") in kb.calls)
 
-    # --- 7. Ação sensível: sem confirmacao = aborta (modo real) ---
+    # --- 7. Acao sensivel: sem confirmacao = aborta (modo real) ---
     with tempfile.TemporaryDirectory() as tmp:
         cfg_dir = os.path.join(tmp, "liberado")
         os.makedirs(cfg_dir)
@@ -251,12 +252,38 @@ def run_all():
     except ScriptValidationError:
         check("roteiro invalido levanta excecao", True)
 
+    # --- 13. Matching de janela: TITULO ou EXECUTAVEL ---
+    # Bug real (26/09/2026): 'notepad' nao casa com o titulo PT-BR
+    # 'Sem titulo - Bloco de Notas' - a palavra so existe no
+    # executavel (NOTEPAD.EXE).
+    check("janela: 'notepad' casa via EXECUTAVEL (caso real PT-BR)",
+          combina_janela("notepad", "Sem titulo - Bloco de Notas",
+                         "NOTEPAD.EXE") is True)
+    check("janela: titulo so (comportamento antigo) mantido",
+          combina_janela("bloco de notas",
+                         "Sem titulo - Bloco de Notas", "") is True)
+    check("janela: 'notepad' casa com titulo EN",
+          combina_janela("notepad", "Untitled - Notepad", "") is True)
+    check("janela: alvo inexistente NAO casa",
+          combina_janela("calculadora", "Sem titulo - Bloco de Notas",
+                         "NOTEPAD.EXE") is False)
+    check("janela: caixa alta ignora",
+          combina_janela("NOTEPAD", "Sem titulo - Bloco de Notas",
+                         "notepad.exe") is True)
+    check("janela: alvo vazio NUNCA casa (nao fecha janela errada)",
+          combina_janela("", "qualquer", "NOTEPAD.EXE") is False)
+    check("janela: espacos nas bordas do alvo sao ignorados",
+          combina_janela("  notepad  ", "Sem titulo - Bloco de Notas",
+                         "NOTEPAD.EXE") is True)
+    check("_exe_do_processo fora do Windows retorna '' (nao explode)",
+          _exe_do_processo(999999) == "")
+
     return results
 
 
 if __name__ == "__main__":
     rs = run_all()
     for n, ok in rs:
-        print(("✅" if ok else "❌"), n)
+        print(("[OK]" if ok else "[ERRO]"), n)
     print(f"\n{sum(o for _, o in rs)}/{len(rs)}")
     sys.exit(0 if all(o for _, o in rs) else 1)
