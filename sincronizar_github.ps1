@@ -1,5 +1,5 @@
 # ============================================================
-# sincronizar_github.ps1 (v4) — Sincroniza a PASTA RAIZ onde for
+# sincronizar_github.ps1 (v4) - Sincroniza a PASTA RAIZ onde for
 # executado com o repositorio GitHub:
 #   https://github.com/junior700/Desktop_Agent_BASE44
 #
@@ -10,7 +10,7 @@
 # Uso: coloque este arquivo na PASTA RAIZ do projeto e rode:
 #   powershell -ExecutionPolicy Bypass -File .\sincronizar_github.ps1
 #
-# v4 — revisao de manejo git (performance + bug free):
+# v4 - revisao de manejo git (performance + bug free):
 #   - TOKEN NUNCA fica gravado no .git/config: fetch/push usam a
 #     URL com token apenas em memoria; o remote origin fica limpo
 #     (e se uma versao antiga gravou token, ele e removido agora)
@@ -66,7 +66,7 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
 }
 
 # ------------------------------------------------------------------
-# .gitignore essencial — SEM BOM (WriteAllText grava UTF-8 limpo;
+# .gitignore essencial - SEM BOM (WriteAllText grava UTF-8 limpo;
 # o BOM do Out-File quebrava a primeira regra do arquivo no git)
 # ------------------------------------------------------------------
 if (-not (Test-Path ".gitignore")) {
@@ -97,7 +97,7 @@ else {
     $urlAtual = (git remote get-url origin 2>$null) -join ""
     if ($urlAtual -match "x-access-token") {
         git remote set-url origin $script:Repo | Out-Null
-        Write-Host "AVISO: havia um token gravado no .git/config — removido." -ForegroundColor Yellow
+        Write-Host "AVISO: havia um token gravado no .git/config - removido." -ForegroundColor Yellow
     }
     elseif (-not $urlAtual) {
         git remote add origin $script:Repo | Out-Null
@@ -116,7 +116,7 @@ if (-not $email) {
 # ------------------------------------------------------------------
 # FETCH UNICO por execucao (performance: a opcao 3 nao baixa 2x).
 # A refspec atualiza refs/remotes/origin/main mesmo usando URL com
-# token — o remote config continua limpo.
+# token - o remote config continua limpo.
 # ------------------------------------------------------------------
 $script:FetchOk = $null
 function Garantir-Fetch {
@@ -140,7 +140,7 @@ function Proteger-TokenNoGitignore {
 }
 
 # ==================================================================
-# ACAO 1 — ENVIAR (commit local + push, sem --force)
+# ACAO 1 - ENVIAR (commit local + push, sem --force)
 # ==================================================================
 function Enviar {
     Proteger-TokenNoGitignore
@@ -211,7 +211,7 @@ function Enviar {
 }
 
 # ==================================================================
-# ACAO 2 — BAIXAR (rebase com guarda-corporal, sem perder nada seu)
+# ACAO 2 - BAIXAR (rebase com guarda-corporal, sem perder nada seu)
 # ==================================================================
 function Baixar {
     # 1) rebase/merge de sessao anterior parado no meio? nao mexe
@@ -280,7 +280,7 @@ function Baixar {
     }
     if ($atrasado -eq 0) {
         Write-Host "GitHub nao tem nada novo. Voce tem commits locais" -ForegroundColor Yellow
-        Write-Host "pendentes — use a opcao 1 (Enviar) para publica-los." -ForegroundColor Yellow
+        Write-Host "pendentes - use a opcao 1 (Enviar) para publica-los." -ForegroundColor Yellow
         return $true
     }
 

@@ -55,7 +55,7 @@ function Escolher-Saida-Gravacao {
 }
 
 # NAO usar 'break' dentro do switch: no PowerShell o break e consumido
-# pelo switch (nao pelo while) — "0 Sair" so redesenhava o menu.
+# pelo switch (nao pelo while) - "0 Sair" so redesenhava o menu.
 # Saida controlada por flag.
 $sair = $false
 while (-not $sair) {

@@ -1,5 +1,5 @@
 # ============================================================
-# gerar_exe.ps1 — Transforma os fontes .bin de restrict\ em .exe
+# gerar_exe.ps1 - Transforma os fontes .bin de restrict\ em .exe
 #
 # COMO FUNCIONA (bug free por construcao):
 #   - Ferramenta: IExpress, NATIVO do Windows (System32\iexpress.exe,
@@ -19,7 +19,7 @@
 # SmartScreen/antivirus pode mostrar "app nao reconhecido" na
 # primeira vez ("Mais informacoes" -> "Executar assim mesmo").
 # Se isso incomodar, o .ps1 de sincronizacao e a alternativa
-# transparente — o que o .exe faz e exatamente o que o .bin diz.
+# transparente - o que o .exe faz e exatamente o que o .bin diz.
 # ============================================================
 
 $ErrorActionPreference = "Stop"
@@ -34,7 +34,7 @@ if (-not (Test-Path $IExpress)) {
 }
 if (-not (Test-Path $IExpress)) {
     Write-Host "ERRO: iexpress.exe nao encontrado (nao deveria acontecer" -ForegroundColor Red
-    Write-Host "no Windows 10/11 — verifique $env:WINDIR\System32)." -ForegroundColor Red
+    Write-Host "no Windows 10/11 - verifique $env:WINDIR\System32)." -ForegroundColor Red
     Read-Host "Pressione ENTER para fechar" | Out-Null
     exit 1
 }
@@ -65,7 +65,7 @@ foreach ($f in $fontes) {
     $batTmp = Join-Path $tmp "$nome.bat"
     Copy-Item $f.FullName $batTmp
 
-    # SED: diretiva do IExpress (formato canônico do assistente)
+    # SED: diretiva do IExpress (formato canonico do assistente)
     # refs: docs Microsoft IExpress; SED sample Ut Video (doom9);
     # ps2exe-iexpress (github.com/Ramikan/Shelling)
     $sed = Join-Path $tmp "$nome.SED"
