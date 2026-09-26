@@ -15,7 +15,8 @@ from agent.safety.emergency_stop import EmergencyStop
 from agent.safety.logger import AuditLogger
 from agent.interpreter.interpreter import (
     ScriptInterpreter, ScriptValidationError,
-    combina_janela, _exe_do_processo)
+    combina_janela, _exe_do_processo, _fechar_com_verificacao,
+    _esperar_desaparecer, _WM_CLOSE, _WM_SYSCOMMAND, _SC_CLOSE)
 from agent.vision.ocr import ScreenReader, FakeOCREngine
 
 
@@ -277,6 +278,92 @@ def run_all():
                          "NOTEPAD.EXE") is True)
     check("_exe_do_processo fora do Windows retorna '' (nao explode)",
           _exe_do_processo(999999) == "")
+
+    # --- 14. fechar_aplicacao: fechamento VERIFICADO (nunca mente ok) ---
+    # Bug real (26/09/2026): close() do pywinauto usa post_message
+    # (WM_CLOSE); janela sem foco so processava o pedido quando o
+    # usuario clicava nela - roteiro terminava ok=True com a janela
+    # ABERTA. Agora: set_focus + close -> WM_CLOSE sincrono ->
+    # SC_CLOSE, cada degrau VERIFICADO pelo handle sumir da
+    # enumeracao.
+
+    class JanelaFake:
+        """So processa WM_CLOSE quando tem foco (o bug real)."""
+        def __init__(self):
+            self.handle = 4242
+            self.aberta = True
+            self.foco = 0
+            self.closes = 0
+            self.msgs = []
+        def set_focus(self):
+            self.foco += 1
+        def close(self):
+            self.closes += 1
+            if self.foco > 0:
+                self.aberta = False
+        def send_message(self, m, wp=0, lp=0):
+            self.msgs.append((m, wp))
+            self.aberta = False
+
+    jf = JanelaFake()
+    ok = _fechar_com_verificacao(
+        jf, lambda: [jf] if jf.aberta else [],
+        timeout_s=0.5, _sleep=lambda s: None)
+    check("fechar: janela sem foco fecha apos set_focus (caso real)",
+          ok and jf.aberta is False)
+    check("fechar: caso real NAO precisa de escalada (degrau 1 basta)",
+          jf.msgs == [] and jf.foco == 1)
+
+    class JanelaTeimosa(JanelaFake):
+        """Nada fecha (dialogo de salvar travado, p.ex.)."""
+        def close(self):
+            self.closes += 1
+        def send_message(self, m, wp=0, lp=0):
+            self.msgs.append((m, wp))
+    jt = JanelaTeimosa()
+    ok = _fechar_com_verificacao(
+        jt, lambda: [jt] if jt.aberta else [],
+        timeout_s=0.3, _sleep=lambda s: None)
+    check("fechar: janela teimosa retorna False (NAO mente sucesso)",
+          ok is False and jt.aberta is True)
+    check("fechar: teimosa esgota a escada (WM_CLOSE + SC_CLOSE)",
+          jt.msgs == [(_WM_CLOSE, 0), (_WM_SYSCOMMAND, _SC_CLOSE)])
+
+    js = JanelaFake()
+    js.close = lambda: None          # degrau 1 falha...
+    js.send_message = lambda m, wp=0, lp=0: (  # ...WM_CLOSE sincrono resolve
+        js.msgs.append((m, wp)), setattr(js, "aberta", False))
+    ok = _fechar_com_verificacao(
+        js, lambda: [js] if js.aberta else [],
+        timeout_s=0.3, _sleep=lambda s: None)
+    check("fechar: WM_CLOSE sincrono pega quando degrau 1 falha",
+          ok is True and js.msgs == [(_WM_CLOSE, 0)])
+
+    vistos = []
+    existe = lambda: vistos.append(1) or len(vistos) < 2
+    dormidas = []
+    check("esperar_desaparecer: True quando some dentro do prazo",
+          _esperar_desaparecer(existe, 1.0, _sleep=dormidas.append) is True)
+    check("esperar_desaparecer: dormiu entre as checagens",
+          len(dormidas) >= 1)
+    check("esperar_desaparecer: False quando nao some (timeout)",
+          _esperar_desaparecer(lambda: True, 0.3,
+                               _sleep=lambda s: None) is False)
+
+    class Morta:
+        @property
+        def handle(self):
+            raise RuntimeError("janela sumiu")
+    check("fechar: janela com handle morto ja e sucesso (sumiu)",
+          _fechar_com_verificacao(
+              Morta(), lambda: [], timeout_s=0.2,
+              _sleep=lambda s: None) is True)
+
+    jt2 = JanelaTeimosa()
+    check("fechar: enumeracao quebrada NUNCA vira sucesso",
+          _fechar_com_verificacao(
+              jt2, lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+              timeout_s=0.2, _sleep=lambda s: None) is False)
 
     return results
 

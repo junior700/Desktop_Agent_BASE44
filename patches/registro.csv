@@ -4,3 +4,4 @@ v005_2026-09-26_0232;2026-09-26 02:32;sincronizar_github.ps1;diagnostico-token-n
 v006_2026-09-26_1343;2026-09-26 13:43;dashboard/app.py|tests/run_all.py|tests/test_smoke.py;limpeza-syntaxwarnings-py312
 v007_2026-09-26_1353;2026-09-26 13:53;agent/runtime.py|tests/test_stack.py|tests/run_all.py;fix-montar-stack-confirmation-fn
 v008_2026-09-26_1407;2026-09-26 14:07;agent/interpreter/interpreter.py|tests/test_interpreter.py;fix-fechar-aplicacao-matching-exe
+v009_2026-09-26_1431;2026-09-26 14:31;agent/interpreter/interpreter.py|tests/test_interpreter.py;fix-fechar-verificacao-foco

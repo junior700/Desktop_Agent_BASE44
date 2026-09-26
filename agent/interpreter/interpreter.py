@@ -30,7 +30,89 @@ from dataclasses import dataclass
 
 from agent.config import AgentConfig
 from agent.safety.guardrails import GuardRails, Verdict
+from agent.safety.logger import AuditLogger
 
+
+# Mensagens Win32 usadas no fechamento de janela (fechar_aplicacao).
+_WM_CLOSE = 0x0010
+_WM_SYSCOMMAND = 0x0112
+_SC_CLOSE = 0xF060
+
+
+def _esperar_desaparecer(existe_fn, timeout_s, _sleep=time.sleep):
+    """Espera existe_fn() virar False. True se sumiu dentro do prazo.
+
+    _sleep e injetavel para testes (nunca dorme de verdade neles).
+    """
+    fim = time.monotonic() + timeout_s
+    while True:
+        if not existe_fn():
+            return True
+        if time.monotonic() >= fim:
+            return False
+        _sleep(0.2)
+
+
+def _fechar_com_verificacao(janela, listar_fn, timeout_s=3.0,
+                            _sleep=time.sleep):
+    """Fecha a janela e VERIFICA que ela sumiu de verdade.
+
+    Bug real (26/09/2026, Win PT-BR): o close() do pywinauto usa
+    post_message(WM_CLOSE) - o pedido e POSTADO na fila da janela,
+    nao processado a forca. Sem foco (ou minimizada), o app so
+    processava o pedido quando o usuario clicava nela, e o close()
+    retorna SEM erro mesmo dando timeout interno: o roteiro
+    terminava ok=True com a janela ABERTA.
+
+    Escada de fechamento (cada degrau seguido de verificacao):
+      1. set_focus (restaura se minimizada + traz pra frente) e
+         close (post WM_CLOSE) - o caso normal;
+      2. send_message(WM_CLOSE) - SINCRONO: bloqueia ate o app
+         processar a mensagem;
+      3. send_message(WM_SYSCOMMAND, SC_CLOSE) - o mesmo que
+         clicar no X, sem tocar mouse/teclado fisico.
+
+    Retorna True SOMENTE quando o handle deixa de aparecer na
+    enumeracao de janelas. Nunca mente sucesso; quem chama aborta
+    com erro claro quando retorna False.
+    """
+    try:
+        handle = janela.handle
+    except Exception:  # noqa: BLE001 - janela ja sumiu
+        return True
+
+    def existe():
+        try:
+            return any(w.handle == handle for w in listar_fn())
+        except Exception:  # noqa: BLE001 - sem enumerar, assume pior
+            return True
+
+    # degrau 1: foco + close
+    try:
+        try:
+            janela.set_focus()
+        except Exception:  # noqa: BLE001 - foco e bonus, nao obriga
+            pass
+        janela.close()
+    except Exception:  # noqa: BLE001 - janelas somem no meio
+        pass
+    if _esperar_desaparecer(existe, timeout_s, _sleep):
+        return True
+
+    # degrau 2: WM_CLOSE sincrono
+    try:
+        janela.send_message(_WM_CLOSE)
+    except Exception:  # noqa: BLE001
+        pass
+    if _esperar_desaparecer(existe, timeout_s, _sleep):
+        return True
+
+    # degrau 3: SC_CLOSE (o X por mensagem)
+    try:
+        janela.send_message(_WM_SYSCOMMAND, _SC_CLOSE)
+    except Exception:  # noqa: BLE001
+        pass
+    return _esperar_desaparecer(existe, timeout_s, _sleep)
 
 def combina_janela(alvo: str, titulo: str, exe: str) -> bool:
     """True se o alvo casa com o TITULO ou com o EXECUTAVEL da janela.
@@ -76,8 +158,6 @@ def _exe_do_processo(pid: int) -> str:
     except Exception:  # noqa: BLE001 - fora do Windows ou pid morto
         pass
     return ""
-from agent.safety.logger import AuditLogger
-
 # Campos obrigatorios por tipo de acao (validacao manual, sem dependencias).
 _REQUIRED = {
     "mover_mouse": ("x", "y"),
@@ -452,14 +532,21 @@ class ScriptInterpreter:
         os.remove(real)
 
     def _close_window(self, titulo: str) -> None:
-        """Fecha janela por substring do TITULO ou do EXECUTAVEL.
+        """Fecha janela (titulo OU executavel) e VERIFICA o resultado.
 
-        Duas passadas: primeiro so janelas VISIVEIS (evita fechar
-        uma janela oculta antes da visivel quando ha varias), depois
-        todas. Casamento via combina_janela().
+        Duas passadas de busca: primeiro so VISIVEIS (evita fechar
+        janela oculta antes da visivel quando ha varias), depois
+        todas. O fechamento e escalado e VERIFICADO por
+        _fechar_com_verificacao - so sucesso real (janela sumiu)
+        conta como sucesso.
         """
         from pywinauto import Desktop  # import tardio
-        janelas = list(Desktop(backend="uia").windows())
+
+        def listar():
+            return list(Desktop(backend="uia").windows())
+
+        janelas = listar()
+        alvo = None
         for so_visiveis in (True, False):
             for w in janelas:
                 try:
@@ -467,14 +554,22 @@ class ScriptInterpreter:
                         continue
                     exe = _exe_do_processo(w.process_id())
                     if combina_janela(titulo, w.window_text(), exe):
-                        w.close()
-                        return
+                        alvo = w
+                        break
                 except Exception:  # noqa: BLE001 - janelas somem no meio
                     continue
-        raise RuntimeError(
-            f"janela nao encontrada: '{titulo}'. O alvo casa por substring "
-            f"com o TITULO da janela ou com o EXECUTAVEL do processo "
-            f"(ex.: 'bloco de notas' ou 'notepad')")
+            if alvo is not None:
+                break
+        if alvo is None:
+            raise RuntimeError(
+                f"janela nao encontrada: '{titulo}'. O alvo casa por substring "
+                f"com o TITULO da janela ou com o EXECUTAVEL do processo "
+                f"(ex.: 'bloco de notas' ou 'notepad')")
+        if not _fechar_com_verificacao(alvo, listar):
+            raise RuntimeError(
+                f"a janela '{titulo}' recebeu o pedido de fechamento mas "
+                f"CONTINUA ABERTA. Verifique se ha um dialogo de salvar "
+                f"(conteudo nao salvo) ou outra aba/tela aguardando resposta.")
 
     def _run_shell(self, comando: str) -> None:
         """Executa comando via subprocess (shell=False, sem elevacao)."""
