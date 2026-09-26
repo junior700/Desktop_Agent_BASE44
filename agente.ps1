@@ -55,6 +55,31 @@ function Escolher-Saida-Gravacao {
     return $null
 }
 
+# Verifica de VERDADE se as dependencias instalaram: importa cada
+# lib critica pelo proprio python do venv e checa a ENGINE Tesseract
+# (pip instala o pytesseract - wrapper Python - mas NAO o programa
+# tesseract.exe, que e separado; pytesseract sem engine quebra em
+# tempo de execucao com TesseractNotFoundError)
+function Verificar-Deps {
+    Write-Host "`n--- Verificacao das dependencias ---"
+    & $Venv -c "import importlib.util as iu; mods=['pyautogui','pywinauto','pynput','PIL','pytesseract','cv2','jsonschema']; f=[m for m in mods if iu.find_spec(m) is None]; print('FALTAM: '+', '.join(f)) if f else print('TODAS AS 7 LIBS PYTHON: OK')"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERRO: python do venv nao rodou a verificacao." -ForegroundColor Red
+    }
+    $eng = where.exe tesseract 2>$null
+    if ($eng) {
+        Write-Host "ENGINE Tesseract OCR: OK ($eng)"
+    }
+    else {
+        Write-Host "ENGINE Tesseract OCR: NAO ENCONTRADA no PATH." -ForegroundColor Yellow
+        Write-Host "O pytesseract (wrapper) esta instalado, mas o PROGRAMA"
+        Write-Host "tesseract.exe e separado. Sem ele, OCR falha em tempo de"
+        Write-Host "execucao. Instale em:"
+        Write-Host "  https://github.com/UB-Mannheim/tesseract/wiki"
+    }
+    Write-Host "--- Fim da verificacao ---`n"
+}
+
 # NAO usar 'break' dentro do switch: no PowerShell o break e consumido
 # pelo switch (nao pelo while) - "0 Sair" so redesenhava o menu.
 # Saida controlada por flag.
@@ -84,8 +109,7 @@ while (-not $sair) {
                     Write-Host ".venv ja existe - reconfirmando dependencias..."
                     & $Venv -m pip install --upgrade pip
                     & $Venv -m pip install -r requirements.txt
-                    Write-Host "`nAmbiente OK. Tesseract OCR (se usar visao):"
-                    Write-Host "  https://github.com/UB-Mannheim/tesseract/wiki"
+                    Verificar-Deps
                 }
                 else {
                     # [c] .venv AUSENTE ou QUEBRADO (pasta existe sem
@@ -112,8 +136,7 @@ while (-not $sair) {
                         if (Test-Path $Venv) {
                             & $Venv -m pip install --upgrade pip
                             & $Venv -m pip install -r requirements.txt
-                            Write-Host "`nInstalacao concluida. Instale tambem o Tesseract OCR:"
-                            Write-Host "  https://github.com/UB-Mannheim/tesseract/wiki"
+                            Verificar-Deps
                         }
                         else {
                             Write-Host "ERRO ao criar o .venv. Motivo REAL:" -ForegroundColor Red

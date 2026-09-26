@@ -109,7 +109,19 @@ def run_all():
     check("opcao [1]: pip roda SO depois do venv confirmado",
           b1.index("if (Test-Path $Venv)") < b1.index("pip install -r requirements.txt"))
     check("opcao [1]: Tesseract OCR ainda e citado (regressao)",
-          "UB-Mannheim/tesseract" in b1)
+          "UB-Mannheim/tesseract" in t)
+    # === verificacao REAL de dependencias (pedido 26/09/2026: o [1]
+    #     nunca CONFIRMOU que pytesseract & cia instalaram de verdade) ===
+    check("opcao [1]: funcao Verificar-Deps existe",
+          "function Verificar-Deps" in t)
+    check("opcao [1]: Verificar-Deps checa as 7 libs (inclui pytesseract)",
+          "pytesseract" in t and "pyautogui','pywinauto','pynput','PIL','pytesseract','cv2','jsonschema'" in t)
+    check("opcao [1]: verificacao por IMPORT REAL (find_spec, nao so pip exit code)",
+          "importlib.util" in t and "find_spec" in t)
+    check("opcao [1]: distingue WRAPPER python da ENGINE tesseract.exe (where.exe)",
+          "where.exe tesseract" in t and "tesseract.exe e separado" in t)
+    check("opcao [1]: Verificar-Deps chamada nos 2 caminhos (venv novo + saudavel)",
+          t.count("Verificar-Deps") >= 3)  # 1 def + 2 chamadas
 
     # === REGRA DE OURO: arquivos chamados por cada opcao EXISTEM ===
     for num, arq in [("2", "tests/run_all.py"), ("3", "main.py"),
