@@ -25,6 +25,7 @@ function Menu {
     Write-Host "  [7] Sincronizar com GitHub (sincronizar_github.ps1)"
     Write-Host "  [8] Gerar publicar_github.exe (fonte .bin em restrict\)"
     Write-Host "  [9] Aplicar patch pendente (patch.ps1 na raiz)"
+    Write-Host "  [10] Instalar pytesseract (se ausente)"
     Write-Host "  [0] Sair`n"
 }
 
@@ -214,6 +215,12 @@ while (-not $sair) {
             } else {
                 Write-Host "Nenhum patch.ps1 na raiz do projeto." -ForegroundColor Yellow
             }
+            Pause
+        }
+        "10" {
+            # instala o pytesseract SE AUSENTE (checagem por import
+            # real); ao sair do script o menu reaparece aqui
+            & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Proj "instalar_pytesseract.ps1")
             Pause
         }
         "0" { $sair = $true }

@@ -39,18 +39,18 @@ def _opcoes_do_menu(t):
     """Extrai os numeros [n] listados SOMENTE na funcao Menu (linhas
     'Write-Host "  [n] ...' - 2 espacos apos a aspas; o aviso da
     propria Menu 'opcao [1] primeiro' nao e item de menu)."""
-    return sorted(re.findall(r'Write-Host "(?:`n)?  \[(\d)\] ', t))
+    return sorted(re.findall(r'Write-Host "(?:`n)?  \[(\d+)\] ', t), key=int)
 
 
 def _casos_do_switch(t):
     """Extrai os numeros dos casos do switch."""
-    return sorted(re.findall(r'^\s+"(\d)" \{', t, re.M))
+    return sorted(re.findall(r'^\s+"(\d+)" \{', t, re.M), key=int)
 
 
 def _blocos_opcao(t):
     """Divide o switch em blocos {numero: texto-do-caso}."""
     # casos vao de "1" a "0", nesta ordem, no switch do menu
-    partes = re.split(r'^\s+"(\d)" \{', t, flags=re.M)
+    partes = re.split(r'^\s+"(\d+)" \{', t, flags=re.M)
     blocos = {}
     for i in range(1, len(partes) - 1, 2):
         blocos[partes[i]] = partes[i + 1]
@@ -65,12 +65,12 @@ def run_all():
     # === REGRA DE OURO: TODA opcao do menu tem caso no switch ===
     ops_menu = _opcoes_do_menu(t)
     ops_switch = _casos_do_switch(t)
-    check("menu lista 10 opcoes (0 a 9)", ops_menu == [str(i) for i in range(10)])
+    check("menu lista 11 opcoes (0 a 10)", ops_menu == [str(i) for i in range(11)])
     check("switch tem caso para cada opcao listada (menu == switch)",
-          ops_menu == ops_switch and len(ops_switch) == 10)
+          ops_menu == ops_switch and len(ops_switch) == 11)
     blocos = _blocos_opcao(t)
-    check("parser de blocos enxergou os 10 casos",
-          sorted(blocos.keys()) == [str(i) for i in range(10)])
+    check("parser de blocos enxergou os 11 casos",
+          sorted(blocos.keys(), key=int) == [str(i) for i in range(11)])
 
     # === REGRA DE OURO: regressoes conhecidas NAO voltaram ===
     check("sem 'break' dentro do switch (gotcha PowerShell: '0 Sair' travava)",
@@ -127,7 +127,8 @@ def run_all():
     for num, arq in [("2", "tests/run_all.py"), ("3", "main.py"),
                      ("5", "main.py"), ("6", "main.py"),
                      ("7", "sincronizar_github.ps1"),
-                     ("8", "restrict/gerar_exe.ps1")]:
+                     ("8", "restrict/gerar_exe.ps1"),
+                     ("10", "instalar_pytesseract.ps1")]:
         existe = os.path.exists(os.path.join(BASE, arq.replace("\\", "/")))
         chamado = arq.split("/")[-1] in blocos.get(num, "")
         check(f"opcao [{num}]: chama '{arq.split('/')[-1]}' e o arquivo existe no projeto",
@@ -149,6 +150,34 @@ def run_all():
                  if n != "0" and "Pause" not in b and "$Venv" in b]
     check("toda opcao de acao termina com Pause (regra anti-flash)",
           len(sem_pausa) == 0)
+
+    # === opcao [10]: instalar pytesseract SE AUSENTE (pedido do
+    #     usuario 26/09/2026) - script separado que volta ao menu ===
+    s10 = open(os.path.join(BASE, "instalar_pytesseract.ps1"),
+               encoding="ascii").read()
+    b10 = blocos.get("10", "")
+    check("opcao [10]: chama instalar_pytesseract.ps1 via powershell -File",
+          "instalar_pytesseract.ps1" in b10 and "-ExecutionPolicy Bypass" in b10)
+    check("opcao [10]: script existe e chama powershell com -NoProfile",
+          os.path.exists(os.path.join(BASE, "instalar_pytesseract.ps1")) and
+          "-NoProfile -ExecutionPolicy Bypass" in b10)
+    check("script [10]: guard de venv (opcao [1] primeiro se faltar)",
+          "Test-Path $Venv" in s10 and "opcao [1]" in s10)
+    check("script [10]: checa AUSENCIA por import REAL antes de instalar (find_spec)",
+          "find_spec('pytesseract')" in s10 and
+          s10.index("find_spec('pytesseract')") < s10.index("pip install"))
+    check("script [10]: NAO reinstala se ja presente (SE AUSENTE)",
+          "JA INSTALADO (import real OK). Nada a fazer." in s10)
+    check("script [10]: verifica de NOVO apos instalar (pip exit 0 nao basta)",
+          s10.count("find_spec('pytesseract')") >= 2)
+    check("script [10]: checa ENGINE tesseract.exe (wrapper != engine)",
+          "where.exe tesseract" in s10 and "UB-Mannheim/tesseract" in s10)
+    check("script [10]: termina com pausa e avisa que volta ao menu (regra anti-flash)",
+          s10.rstrip().endswith("Read-Host \"Pressione ENTER para voltar ao menu\""))
+    check("script [10]: saida de erro do guard tambem tem pausa (regra)",
+          s10.count("Read-Host") >= 2)
+    check("script [10]: 100% ASCII",
+          all(b < 128 for b in open(os.path.join(BASE, "instalar_pytesseract.ps1"), "rb").read()))
 
     # === dashboard: integracao com o minimize do console (v012) ===
     check("opcao [6]: abre dashboard via Start-Process (console minimizado pelo app)",
