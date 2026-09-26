@@ -24,6 +24,7 @@ function Menu {
     Write-Host "  [6] Abrir dashboard"
     Write-Host "  [7] Sincronizar com GitHub (sincronizar_github.ps1)"
     Write-Host "  [8] Gerar publicar_github.exe (fonte .bin em restrict\)"
+    Write-Host "  [9] Aplicar patch pendente (patch.ps1 na raiz)"
     Write-Host "  [0] Sair`n"
 }
 
@@ -121,6 +122,18 @@ while (-not $sair) {
         "8" {
             # Gera publicar_github.exe a partir do fonte .bin (IExpress nativo)
             & powershell -ExecutionPolicy Bypass -File (Join-Path $Proj "restrict\gerar_exe.ps1")
+            Pause
+        }
+        "9" {
+            # Aplica patch pendente: o menu injeta o -ExecutionPolicy Bypass
+            # (o patch NAO PODE embutir isso nele mesmo: a trava e avaliada
+            # pelo PowerShell ANTES da 1a linha do script rodar - ovo e galinha)
+            $p = Join-Path $Proj "patch.ps1"
+            if (Test-Path $p) {
+                & powershell -NoProfile -ExecutionPolicy Bypass -File $p
+            } else {
+                Write-Host "Nenhum patch.ps1 na raiz do projeto." -ForegroundColor Yellow
+            }
             Pause
         }
         "0" { $sair = $true }

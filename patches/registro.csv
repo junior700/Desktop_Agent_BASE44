@@ -1,2 +1,3 @@
 versao;data;arquivos;resultado
 v001_2026-09-26_0147;2026-09-26 01:47;agente.ps1|sincronizar_github.ps1|restrict\gerar_exe.ps1;gerado-no-workspace
+v002_2026-09-26_0150;2026-09-26 01:50;agente.ps1|sincronizar_github.ps1|restrict\gerar_exe.ps1;opcao-9-aplicar-patch
