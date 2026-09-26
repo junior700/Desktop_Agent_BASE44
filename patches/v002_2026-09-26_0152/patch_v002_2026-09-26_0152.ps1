@@ -2,7 +2,8 @@
 # patch.ps1 - aplicador automatico de correcoes
 #
 # COMO USAR (na raiz do projeto):
-#   powershell -ExecutionPolicy Bypass -File .\patch.ps1
+#   - opcao [9] do menu agente.ps1, ou
+#   - powershell -ExecutionPolicy Bypass -File .\patch.ps1
 #
 # O QUE ELE FAZ (nesta ordem):
 #   1. cria a pasta patches\ (se nao existir)
@@ -61,6 +62,7 @@ function Menu {
     Write-Host "  [6] Abrir dashboard"
     Write-Host "  [7] Sincronizar com GitHub (sincronizar_github.ps1)"
     Write-Host "  [8] Gerar publicar_github.exe (fonte .bin em restrict\)"
+    Write-Host "  [9] Aplicar patch pendente (patch.ps1 na raiz)"
     Write-Host "  [0] Sair`n"
 }
 
@@ -158,6 +160,18 @@ while (-not $sair) {
         "8" {
             # Gera publicar_github.exe a partir do fonte .bin (IExpress nativo)
             & powershell -ExecutionPolicy Bypass -File (Join-Path $Proj "restrict\gerar_exe.ps1")
+            Pause
+        }
+        "9" {
+            # Aplica patch pendente: o menu injeta o -ExecutionPolicy Bypass
+            # (o patch NAO PODE embutir isso nele mesmo: a trava e avaliada
+            # pelo PowerShell ANTES da 1a linha do script rodar - ovo e galinha)
+            $p = Join-Path $Proj "patch.ps1"
+            if (Test-Path $p) {
+                & powershell -NoProfile -ExecutionPolicy Bypass -File $p
+            } else {
+                Write-Host "Nenhum patch.ps1 na raiz do projeto." -ForegroundColor Yellow
+            }
             Pause
         }
         "0" { $sair = $true }
@@ -655,6 +669,18 @@ exit 0
 
 }
 
+# --- SHA-256 esperado de cada arquivo gravado (verificacao) ---
+# conteudo 100% legivel acima; base64 foi descartado de proposito
+# (auditoria no Bloco de Notas > blob ilegivel). O hash prova que
+# o que chegou no disco e exatamente o que esta escrito aqui.
+$Hashes = @{
+
+    "agente.ps1" = "B4406E09763C6B1BE25098F7C473A3641EBCBD0BFA4F89D5AA0E6AD54377070A"
+    "sincronizar_github.ps1" = "C8199CD03819E37248FFE6608DA1DA6C6552195DEA92FFE4AAF94B2922EB3158"
+    "restrict\gerar_exe.ps1" = "FDB79692F1E74A3D07E94729AF920E478E37BF8E9072406876473AD624B2EB8C"
+
+}
+
 # --- confirmacao: o que sera tocado ---
 Write-Host "Este patch grava os seguintes arquivos:" -ForegroundColor Yellow
 foreach ($rel in $Arquivos.Keys) {
@@ -710,13 +736,15 @@ foreach ($rel in $Arquivos.Keys) {
     $conteudo = $Arquivos[$rel]
     [IO.File]::WriteAllText($dest, $conteudo, [Text.Encoding]::ASCII)
 
-    # verificacao: rele e compara o tamanho
-    $releu = [IO.File]::ReadAllText($dest)
-    if ($releu.Length -eq $conteudo.Length) {
-        Write-Host ("[OK] {0}" -f $rel) -ForegroundColor Green
+    # verificacao: SHA-256 do gravado == SHA-256 esperado
+    $h = (Get-FileHash -Algorithm SHA256 -LiteralPath $dest).Hash
+    if ($h -eq $Hashes[$rel]) {
+        Write-Host ("[OK] {0} (sha256 {1}...)" -f $rel, $h.Substring(0, 8)) -ForegroundColor Green
         $relats += "OK"
     } else {
-        Write-Host ("[ERRO] {0}: tamanho gravado difere" -f $rel) -ForegroundColor Red
+        Write-Host ("[ERRO] {0}: sha256 divergente" -f $rel) -ForegroundColor Red
+        Write-Host ("       esperado {0}" -f $Hashes[$rel]) -ForegroundColor Red
+        Write-Host ("       gravado {0}" -f $h) -ForegroundColor Red
         $relats += "ERRO"
         $ok = $false
     }
