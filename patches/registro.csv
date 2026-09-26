@@ -8,3 +8,4 @@ v009_2026-09-26_1431;2026-09-26 14:31;agent/interpreter/interpreter.py|tests/tes
 v010_2026-09-26_1449;2026-09-26 14:49;sincronizar_github.ps1|tests/test_sincronizar_token.py|tests/run_all.py;token-auto-cura-padrao-gitignore-desrastreio
 v011_2026-09-26_1501;2026-09-26 15:01;sincronizar_github.ps1|tests/test_sincronizar_token.py;sync-mensagens-circulares-rebase-force-lease-reset
 v012_2026-09-26_1532;2026-09-26 15:32;dashboard/app.py|tests/test_dashboard_ui.py|tests/run_all.py;dashboard-colisao-grid-minimizar-console
+v013_2026-09-26_1538;2026-09-26 15:38;agente.ps1|tests/test_menu_agente.py|tests/run_all.py;menu-errno13-diagnostico-guards-venv

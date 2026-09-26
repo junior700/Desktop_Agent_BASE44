@@ -64,17 +64,65 @@ while (-not $sair) {
     $op = Read-Host "Escolha"
     switch ($op) {
         "1" {
-            Write-Host "Criando ambiente virtual..."
+            # Bug real do usuario (26/09/2026): py -3.12 RODOU e o venv
+            # falhou com "Errno 13 Permission denied python.exe" (venv em
+            # uso), mas o script reportava "Python 3.12 nao encontrado" -
+            # diagnostico MENTIROSO. Agora cada falha tem sua causa real:
             Push-Location $Proj
             try {
-                py -3.12 -m venv .venv
+                # [a] Python 3.12 existe mesmo? (erro separado, message clara)
+                py -3.12 --version 2>&1 | Out-Null
                 if ($LASTEXITCODE -ne 0) {
-                    Write-Host "ERRO: Python 3.12 nao encontrado (py -3.12)" -ForegroundColor Red
-                } else {
+                    Write-Host "ERRO: Python 3.12 NAO esta instalado (py -3.12)." -ForegroundColor Red
+                    Write-Host "Baixe em https://www.python.org/downloads/ e marque" -ForegroundColor Yellow
+                    Write-Host "'py launcher' no instalador (opcao padrao)." -ForegroundColor Yellow
+                }
+                elseif (Test-Path $Venv) {
+                    # [b] .venv SAUDAVEL: nao recria! Recriar com o ambiente
+                    # em uso e a causa do Errno 13 (python.exe travado);
+                    # so reconfere as dependencias
+                    Write-Host ".venv ja existe - reconfirmando dependencias..."
                     & $Venv -m pip install --upgrade pip
                     & $Venv -m pip install -r requirements.txt
-                    Write-Host "`nInstalacao concluida. Instale tambem o Tesseract OCR:"
+                    Write-Host "`nAmbiente OK. Tesseract OCR (se usar visao):"
                     Write-Host "  https://github.com/UB-Mannheim/tesseract/wiki"
+                }
+                else {
+                    # [c] .venv AUSENTE ou QUEBRADO (pasta existe sem
+                    # python.exe - criacao interrompida no meio)
+                    $criar = $true
+                    $venvDir = Join-Path $Proj ".venv"
+                    if (Test-Path $venvDir) {
+                        Write-Host "Pasta .venv existe mas esta QUEBRADA (sem python.exe)." -ForegroundColor Yellow
+                        Write-Host "Apagando e recriando do zero..."
+                        try {
+                            Remove-Item -Recurse -Force $venvDir -ErrorAction Stop
+                        }
+                        catch {
+                            Write-Host "ERRO: .venv travado (arquivo em uso). Feche o" -ForegroundColor Red
+                            Write-Host "dashboard, editores ou scripts que usam o" -ForegroundColor Red
+                            Write-Host "ambiente e rode a opcao [1] de novo." -ForegroundColor Red
+                            $criar = $false
+                        }
+                    }
+                    if ($criar) {
+                        Write-Host "Criando ambiente virtual..."
+                        $saidaVenv = (py -3.12 -m venv .venv 2>&1 | Out-String).Trim()
+                        # verificacao REAL: o python.exe do venv existe agora?
+                        if (Test-Path $Venv) {
+                            & $Venv -m pip install --upgrade pip
+                            & $Venv -m pip install -r requirements.txt
+                            Write-Host "`nInstalacao concluida. Instale tambem o Tesseract OCR:"
+                            Write-Host "  https://github.com/UB-Mannheim/tesseract/wiki"
+                        }
+                        else {
+                            Write-Host "ERRO ao criar o .venv. Motivo REAL:" -ForegroundColor Red
+                            Write-Host $saidaVenv
+                            Write-Host "(Permission denied = algo usando/travando a pasta:" -ForegroundColor Yellow
+                            Write-Host "feche programas do .venv, ou antivrus/OneDrive;" -ForegroundColor Yellow
+                            Write-Host "rode [1] de novo apos liberar)" -ForegroundColor Yellow
+                        }
+                    }
                 }
             } finally { Pop-Location }
             Pause
@@ -98,7 +146,10 @@ while (-not $sair) {
             $conf = Read-Host "Continuar? [s/N]"
             if ($conf -eq "s") {
                 $rot = Escolher-Roteiro
-                if ($rot) { & $Venv (Join-Path $Proj "main.py") $rot --real }
+                if ($rot) {
+                    if (Test-Path $Venv) { & $Venv (Join-Path $Proj "main.py") $rot --real }
+                    else { Write-Host "Rode a opcao [1] primeiro." -ForegroundColor Yellow }
+                }
             }
             Pause
         }
@@ -111,7 +162,13 @@ while (-not $sair) {
             Pause
         }
         "6" {
-            Start-Process $Venv -ArgumentList "`"$Proj\main.py`" --dashboard"
+            # dashboard minimiza a propria janela do console ao abrir
+            # (app.py: WM_DELETE_WINDOW restaura ao fechar)
+            if (Test-Path $Venv) {
+                Start-Process $Venv -ArgumentList "`"$Proj\main.py`" --dashboard"
+            } else {
+                Write-Host "Rode a opcao [1] primeiro." -ForegroundColor Yellow
+            }
             Pause
         }
         "7" {
