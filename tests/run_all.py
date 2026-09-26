@@ -1,5 +1,5 @@
 """
-run_all.py — Roda TODOS os testes do projeto e reporta o total.
+run_all.py - Roda TODOS os testes do projeto e reporta o total.
 Uso: python tests/run_all.py  (no Windows: .venv\Scripts\python tests\run_all.py)
 """
 
@@ -16,6 +16,7 @@ TESTES = [
     "test_decision.py",
     "test_smoke.py",
     "test_vision.py",
+    "test_sed_gerar_exe.py",
 ]
 
 
@@ -42,7 +43,7 @@ def main():
 
 
 def _contar(path):
-    """Importa o módulo de teste e roda run_all() para contar as checagens."""
+    """Importa o modulo de teste e roda run_all() para contar as checagens."""
     import importlib.util
     spec = importlib.util.spec_from_file_location(path, path)
     mod = importlib.util.module_from_spec(spec)

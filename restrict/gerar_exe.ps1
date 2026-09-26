@@ -1,16 +1,30 @@
 # ============================================================
 # gerar_exe.ps1 - Transforma os fontes .bin de restrict\ em .exe
 #
-# COMO FUNCIONA (bug free por construcao):
-#   - Ferramenta: IExpress, NATIVO do Windows (System32\iexpress.exe,
-#     presente desde o Windows 2000; nada a instalar).
+# COMO FUNCIONA:
+#   - Ferramenta: IExpress, NATIVO do Windows (nada a instalar).
 #   - Para cada *.bin em restrict\: copia para uma pasta TEMPORARIA
 #     com a extensao .bat restaurada, gera o .SED e roda:
 #         iexpress.exe /N /Q /M <arquivo>.SED
 #   - O .bat real so existe no %TEMP% durante o build; ao final a
-#     pasta temporaria inteira e apagada. Fonte e zip ficam limpos.
+#     pasta temporaria e apagada (mantida em caso de erro, para
+#     inspecao do SED). Fonte e zip ficam limpos.
 #   - O .exe gerado sai na RAIZ do projeto (um nivel acima de
 #     restrict\): ex. publicar_github.exe.
+#
+# CORRECOES v3 (falha real na 1a execucao, codigo 1 do IExpress):
+#   1) SED [Options] usa o LITERAL "SourceFiles=SourceFiles" -
+#      antes era "SourceFiles=%SourceFiles%" com a variavel
+#      %SourceFiles% NUNCA definida em [Strings]; o IExpress
+#      abortava na substituicao (exit 1). Confirmado contra o
+#      SED funcional do ps2exe-iexpress (github.com/Ramikan/Shelling)
+#      e o formato do assistente (wizard) do Windows.
+#   2) UseLongFileName=1 (antes 0; caminhos longos do %TEMP%).
+#   3) Fallback de arquitetura: se o iexpress de System32 falhar,
+#      tenta o de SysWOW64 (32 bits, usado de proposito pela
+#      referencia "para maior compatibilidade").
+#   4) Exe antigo removido antes do build (IExpress nao gosta de
+#      sobrescrever destino existente).
 #
 # USO (na raiz do projeto, ou pela opcao [8] do agente.ps1):
 #   powershell -ExecutionPolicy Bypass -File .\restrict\gerar_exe.ps1
@@ -18,8 +32,7 @@
 # NOTA HONESTA (antivirus): o .exe gerado NAO e assinado; o
 # SmartScreen/antivirus pode mostrar "app nao reconhecido" na
 # primeira vez ("Mais informacoes" -> "Executar assim mesmo").
-# Se isso incomodar, o .ps1 de sincronizacao e a alternativa
-# transparente - o que o .exe faz e exatamente o que o .bin diz.
+# O que o .exe faz e exatamente o que o .bin diz.
 # ============================================================
 
 $ErrorActionPreference = "Stop"
@@ -27,12 +40,13 @@ $ErrorActionPreference = "Stop"
 $Restrict = $PSScriptRoot                      # ...projeto\restrict
 $Raiz     = Split-Path $Restrict -Parent       # ...projeto
 
-# --- IExpress existe? (nativo do Windows) ---
-$IExpress = Join-Path $env:WINDIR "System32\iexpress.exe"
-if (-not (Test-Path $IExpress)) {
-    $IExpress = Join-Path $env:WINDIR "SysWOW64\iexpress.exe"
-}
-if (-not (Test-Path $IExpress)) {
+# --- iexpress: 64 bits (padrao) com fallback 32 bits (compat) ---
+$IExpresses = @(
+    (Join-Path $env:WINDIR "System32\iexpress.exe")
+    (Join-Path $env:WINDIR "SysWOW64\iexpress.exe")
+) | Where-Object { Test-Path $_ }
+
+if ($IExpresses.Count -eq 0) {
     Write-Host "ERRO: iexpress.exe nao encontrado (nao deveria acontecer" -ForegroundColor Red
     Write-Host "no Windows 10/11 - verifique $env:WINDIR\System32)." -ForegroundColor Red
     Read-Host "Pressione ENTER para fechar" | Out-Null
@@ -50,13 +64,16 @@ if ($fontes.Count -eq 0) {
 Write-Host ""
 Write-Host "=== Gerando executaveis (IExpress nativo) ===" -ForegroundColor Cyan
 Write-Host "Fontes em : $Restrict"
-Write-Host "Saida em  : $Raiz" 
+Write-Host "Saida em  : $Raiz"
 Write-Host ""
 
 $gerados = 0
 foreach ($f in $fontes) {
-    $nome   = [IO.Path]::GetFileNameWithoutExtension($f.Name)
-    $destExe = Join-Path $Raiz "$nome.exe"
+    $nome     = [IO.Path]::GetFileNameWithoutExtension($f.Name)
+    $destExe  = Join-Path $Raiz "$nome.exe"
+
+    # exe antigo fora (IExpress nao sobrescreve bem destino existente)
+    Remove-Item $destExe -Force -ErrorAction SilentlyContinue
 
     # pasta TEMPORARIA do build (o .bat so vive aqui, e morre aqui)
     $suf = [IO.Path]::GetRandomFileName() -replace "\.", ""
@@ -65,9 +82,8 @@ foreach ($f in $fontes) {
     $batTmp = Join-Path $tmp "$nome.bat"
     Copy-Item $f.FullName $batTmp
 
-    # SED: diretiva do IExpress (formato canonico do assistente)
-    # refs: docs Microsoft IExpress; SED sample Ut Video (doom9);
-    # ps2exe-iexpress (github.com/Ramikan/Shelling)
+    # SED: diretiva do IExpress no formato do assistente (wizard),
+    # conferido contra ps2exe-iexpress (github.com/Ramikan/Shelling)
     $sed = Join-Path $tmp "$nome.SED"
     $sedConteudo = @"
 [Version]
@@ -77,7 +93,7 @@ SEDVersion=3
 PackagePurpose=InstallApp
 ShowInstallProgramWindow=1
 HideExtractAnimation=1
-UseLongFileName=0
+UseLongFileName=1
 InsideCompressed=0
 CAB_FixedSize=0
 CAB_ResvCodeSigning=0
@@ -91,7 +107,7 @@ AppLaunched=%AppLaunched%
 PostInstallCmd=%PostInstallCmd%
 AdminQuietInst=%AdminQuietInst%
 UserInstCmd=%UserInstCmd%
-SourceFiles=%SourceFiles%
+SourceFiles=SourceFiles
 [Strings]
 InstallPrompt=
 DisplayLicense=
@@ -110,21 +126,30 @@ SourceFiles0=$tmp\
 "@
     [IO.File]::WriteAllText($sed, $sedConteudo, [Text.Encoding]::ASCII)
 
-    # build silencioso: /N sem assistente, /Q quiet, /M a partir do SED
-    & $IExpress "/N" "/Q" "/M" $sed | Out-Null
-    $erro = ($LASTEXITCODE -ne 0)
+    # build silencioso: /N sem assistente, /Q quiet, /M a partir do SED.
+    # fallback: System32 (64b) falhou -> tenta SysWOW64 (32b)
+    $erro = $true
+    $codErro = 1
+    foreach ($ie in $IExpresses) {
+        & $ie "/N" "/Q" "/M" $sed | Out-Null
+        $codErro = $LASTEXITCODE
+        if ($codErro -eq 0 -and (Test-Path $destExe)) {
+            $erro = $false
+            break
+        }
+        Write-Host "       tentativa com $ie falhou (codigo $codErro); tentando proximo..." -ForegroundColor Yellow
+    }
 
-    if (-not $erro -and (Test-Path $destExe)) {
+    if (-not $erro) {
         Write-Host "[OK] $($f.Name) -> $nome.exe" -ForegroundColor Green
         $gerados++
+        Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
     }
     else {
-        Write-Host "[ERRO] $($f.Name): iexpress falhou (codigo $LASTEXITCODE)." -ForegroundColor Red
+        Write-Host "[ERRO] $($f.Name): iexpress falhou (codigo $codErro)." -ForegroundColor Red
         Write-Host "       SED preservado para inspecao: $sed" -ForegroundColor Yellow
+        Write-Host "       Abra um relatorio: envie o conteudo do SED acima." -ForegroundColor Yellow
     }
-
-    # limpeza do TEMP (mantida em caso de erro, para debug do SED)
-    if (-not $erro) { Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
 Write-Host ""
