@@ -115,7 +115,10 @@ else {
     # .gitignore antigo pode nao cobrir token com extensao duplicada
     # (token_github.txt.txt seria commitado = vazamento de credencial)
     $ignAtual = [IO.File]::ReadAllText((Join-Path $script:Raiz ".gitignore"))
-    if ($ignAtual -notlike "*token_github*") {
+    # BUG v010: a checagem era '*token_github*' (frouxa) - o .gitignore
+    # antigo com 'token_github.txt' satisfazia e o PADRAO nunca entrava,
+    # deixando o token_github.txt.txt ser commitado. Checar o padrao LITERAL.
+    if ($ignAtual -notlike "*token_github*.txt*") {
         [IO.File]::AppendAllText((Join-Path $script:Raiz ".gitignore"),
             [Environment]::NewLine + "token_github*.txt")
         Write-Host ".gitignore: adicionado padrao do token (seguranca)." -ForegroundColor Green
@@ -159,6 +162,14 @@ if ($tokenRastreado.Count -gt 0) {
     Write-Host "Se ele ja foi enviado ao GitHub em commit anterior," -ForegroundColor Yellow
     Write-Host "REGENERE o token em github.com/settings/tokens." -ForegroundColor Yellow
 }
+$tokenNoHistorico = @(git log --all --oneline -- "token_github*" 2>$null)
+if ($tokenNoHistorico.Count -gt 0) {
+    Write-Host "AVISO GRAVE: o token aparece em COMMITS do historico local" -ForegroundColor Red
+    Write-Host "(commit automatico antigo, p.ex.). Se um push levar esses" -ForegroundColor Red
+    Write-Host "commits, o token fica PUBLICO no GitHub." -ForegroundColor Red
+    Write-Host "Apos sincronizar, REGENERE o PAT em github.com/settings/tokens" -ForegroundColor Yellow
+    Write-Host "e salve o novo no token_github.txt." -ForegroundColor Yellow
+}
 
 # identidade local: sem ela o commit falha com erro confuso
 $email = (git config user.email) -join ""
@@ -176,10 +187,14 @@ if (-not $email) {
 $script:FetchOk = $null
 function Garantir-Fetch {
     if ($null -ne $script:FetchOk) { return $script:FetchOk }
-    git fetch --quiet $script:UrlGit "+refs/heads/main:refs/remotes/origin/main" 2>$null
+    $saidaFetch = (git fetch $script:UrlGit `
+        "+refs/heads/main:refs/remotes/origin/main" 2>&1 | Out-String)
     $script:FetchOk = ($LASTEXITCODE -eq 0)
     if (-not $script:FetchOk) {
-        Write-Host "ERRO: sem acesso ao GitHub (verifique internet/credenciais)." -ForegroundColor Red
+        Write-Host "ERRO: sem acesso ao GitHub. Motivo:" -ForegroundColor Red
+        # sanitiza: nunca mostra o token que vai na URL
+        Write-Host (($saidaFetch -replace "x-access-token:[^@]*@",
+                      "x-access-token:***@").Trim())
     }
     return $script:FetchOk
 }
@@ -241,6 +256,34 @@ function Enviar {
         }
     }
 
+    # INTEGRACAO (bug real 26/09/2026: mensagens circulares "use a
+    # opcao 1"/"use a opcao 3" - a opcao 1 NUNCA integrava o remoto).
+    # Fluxo padrao documentado do GitHub para non-fast-forward:
+    # fetch -> rebase -> push. Sem isso, historico divergente
+    # rejeita o push para sempre (a razao do loop do usuario).
+    $atrasado = 0
+    if ($temMain -and $temRemoto) {
+        $atrasado = [int]((git rev-list --count "main..origin/main") -join "")
+    }
+    if ($atrasado -gt 0) {
+        Write-Host "GitHub tem $atrasado commit(s) novo(s) - integrando antes do push..." -ForegroundColor Cyan
+        $saidaReb = (git rebase origin/main 2>&1 | Out-String)
+        if ($LASTEXITCODE -ne 0) {
+            if ($saidaReb -match "CONFLICT") {
+                git rebase --abort | Out-Null
+                Write-Host "CONFLITO ao integrar. Opcoes:" -ForegroundColor Red
+                Write-Host "  - Opcao 4 (a pasta local MANDA, sobrescreve o GitHub)" -ForegroundColor Yellow
+                Write-Host "  - Opcao 5 (o GitHub MANDA, a pasta fica igual ao remoto)" -ForegroundColor Yellow
+            }
+            else {
+                Write-Host "Falha ao integrar. Detalhes:" -ForegroundColor Red
+                Write-Host (($saidaReb -replace "x-access-token:[^@]*@",
+                              "x-access-token:***@").Trim())
+            }
+            return $false
+        }
+    }
+
     # push pela URL (token em memoria, nada gravado)
     $saida = (git push $script:UrlGit "main:refs/heads/main" 2>&1 | Out-String)
     if ($LASTEXITCODE -ne 0) {
@@ -253,7 +296,8 @@ function Enviar {
         }
         elseif ($saida -match "rejected" -or $saida -match "fetch first") {
             Write-Host "Push REJEITADO: o GitHub tem mudancas que voce nao tem." -ForegroundColor Yellow
-            Write-Host "Rode de novo e use a opcao 3 (Sincronizacao completa)." -ForegroundColor Yellow
+            Write-Host "Use a opcao 3 (Sincronizacao completa) ou, se quiser que a" -ForegroundColor Yellow
+            Write-Host "PASTA LOCAL venca, a opcao 4 (forca segura)." -ForegroundColor Yellow
         }
         else {
             Write-Host "Push falhou. Detalhes:" -ForegroundColor Red
@@ -370,13 +414,76 @@ function Baixar {
 }
 
 # ==================================================================
+# ACAO 4 - FORCAR (pasta local MANDA; --force-with-lease, documentado
+# como mais seguro que --force: recusa se o remoto mudou desde o
+# ultimo fetch conhecido, protegendo contra apagar trabalho alheio)
+# ==================================================================
+function Forcar {
+    Proteger-TokenNoGitignore
+    git add -A
+    $pend = (git status --porcelain) -join ""
+    if ($pend) {
+        $msg = "sincronizacao forcada " + (Get-Date -Format "yyyy-MM-dd HH:mm")
+        git commit -m $msg | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "ERRO ao criar commit." -ForegroundColor Red
+            return $false
+        }
+    }
+    if (-not (Garantir-Fetch)) { return $false }
+    $saida = (git push --force-with-lease $script:UrlGit `
+        "main:refs/heads/main" 2>&1 | Out-String)
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Forca recusada. Detalhes (sanitizado):" -ForegroundColor Red
+        Write-Host (($saida -replace "x-access-token:[^@]*@",
+                      "x-access-token:***@").Trim())
+        Write-Host "(--force-with-lease recusa se o GitHub mudou apos o fetch;" -ForegroundColor Yellow
+        Write-Host " rode de novo - o fetch desta execucao atualiza a base)" -ForegroundColor Yellow
+        return $false
+    }
+    Write-Host "GitHub sobrescrito: agora esta IGUAL a pasta local." -ForegroundColor Green
+    return $true
+}
+
+# ==================================================================
+# ACAO 5 - RESET (o GitHub MANDA; padrao 'git reset --hard
+# origin/main': a pasta local fica EXATAMENTE igual ao remoto.
+# Arquivos nao rastreados/ignorados (token, capturas, .venv) ficam)
+# ==================================================================
+function Resetar {
+    if (-not (Garantir-Fetch)) { return $false }
+    git rev-parse --verify -q origin/main | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "GitHub ainda nao tem a branch main." -ForegroundColor Yellow
+        return $false
+    }
+    Write-Host "ATENCAO: commits e ajustes locais NAO publicados serao" -ForegroundColor Yellow
+    Write-Host "DESCARTADOS; a pasta ficara igual ao GitHub." -ForegroundColor Yellow
+    Write-Host "Arquivos ignorados (token, capturas, .venv) NAO sao tocados." -ForegroundColor Cyan
+    $conf = Read-Host "Confirmar reset? [s/N]"
+    if ($conf -ne "s") {
+        Write-Host "Cancelado." -ForegroundColor Yellow
+        return $false
+    }
+    git reset --hard origin/main | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Falha no reset." -ForegroundColor Red
+        return $false
+    }
+    Write-Host "Pasta local agora esta IGUAL ao GitHub." -ForegroundColor Green
+    return $true
+}
+
+# ==================================================================
 # MENU
 # ==================================================================
 Write-Host ""
 Write-Host "=== Sincronizar com github.com/junior700/Desktop_Agent_BASE44 ===" -ForegroundColor Cyan
-Write-Host "[1] Enviar mudancas locais (push)"
+Write-Host "[1] Enviar mudancas locais (commit + integracao + push)"
 Write-Host "[2] Baixar mudancas do GitHub (pull)"
 Write-Host "[3] Sincronizacao completa (baixar + enviar)"
+Write-Host "[4] FORCAR: pasta local MANDA (forca segura no GitHub)"
+Write-Host "[5] RESET: GitHub MANDA (pasta fica igual ao remoto)"
 $op = Read-Host "Opcao"
 
 switch ($op) {
@@ -384,6 +491,8 @@ switch ($op) {
     "2" { Baixar | Out-Null }
     # so envia se o baixar terminou bem (evita empurrar por cima de erro)
     "3" { if (Baixar) { Enviar | Out-Null } }
+    "4" { Forcar | Out-Null }
+    "5" { Resetar | Out-Null }
     default { Write-Host "Opcao invalida." -ForegroundColor Red }
 }
 Write-Host ""

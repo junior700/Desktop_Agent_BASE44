@@ -56,7 +56,7 @@ def run_all():
     check("gitignore: lista nova inclui token_github*.txt",
           '"Obsoleto/", "token_github.txt", "token_github*.txt"' in t)
     check("gitignore: .gitignore EXISTENTE recebe o padrao se faltar",
-          "-notlike \"*token_github*\"" in t and "AppendAllText" in t)
+          '-notlike "*token_github*.txt*"' in t and "AppendAllText" in t)
 
     # --- guarda de desrastreio (token commitado por engano) ---
     check("seguranca: detecta token rastreado (git ls-files)",
@@ -75,6 +75,28 @@ def run_all():
     dica = "dir token_github*" in t
     check("mensagem antiga mantida: dica 'dir token_github*'",
           dica)
+
+    # --- v011: fluxo de sincronizacao (mensagens circulares do usuario) ---
+    check("enviar: integra o remoto antes do push (git rebase origin/main)",
+          "git rebase origin/main" in t)
+    check("enviar: conflito no rebase -> aborta e sugere 4/5",
+          "git rebase --abort" in t and "CONFLITO ao integrar" in t)
+    check("opcao 4: forca segura documentada (--force-with-lease)",
+          "git push --force-with-lease" in t)
+    check("opcao 5: reset para o remoto (git reset --hard origin/main)",
+          "git reset --hard origin/main" in t)
+    check("opcao 5: exige confirmacao antes do reset",
+          "Confirmar reset? [s/N]" in t)
+    check("menu: agora tem 5 opcoes (4 FORCAR / 5 RESET)",
+          "[4] FORCAR" in t and "[5] RESET" in t)
+    check("fetch: erro NAO e engolido (2>&1 capturado)",
+          "2>&1 | Out-String" in t and "--quiet" not in t.split("function Garantir-Fetch")[1].split("function")[0])
+    check("seguranca: saidas de git SANITIZADAS (token nunca aparece)",
+          'x-access-token:***@' in t)
+    check("seguranca: detecta token em COMMITS do historico local",
+          'git log --all --oneline -- "token_github*"' in t)
+    check("gitignore: checagem agora e LITERAL (bug da v010 corrigido)",
+          '-notlike "*token_github*.txt*"' in t)
 
     return results
 
