@@ -2,18 +2,23 @@
 setlocal EnableDelayedExpansion
 
 REM ============================================================
-REM publicar_github.bat - Git Add/Commit/Push Automatico
-REM Base: script do usuario, com 3 correcoes:
-REM   1) raiz adaptativa: usa o .git da pasta do .bat OU de dois
-REM      niveis acima (logica do script original do usuario)
-REM   2) baixa novidades do GitHub ANTES de empurrar (evita push rejeitado)
-REM   3) usa token_github.txt (opcional) para autenticar no push
-REM
-REM Coloque este .bat na RAIZ do projeto, OU dois niveis abaixo dela
-REM (a deteccao automatica encontra o repositorio nos dois casos).
-REM Para autenticar sem depender do navegador, crie
-REM token_github.txt na mesma pasta com o PAT dentro (uma linha).
+REM publicar_github.bat (v2) - Git Add/Commit/Push Automatico
+REM Base: script do usuario, com correcoes de manejo git:
+REM   1) raiz adaptativa: .git da pasta do .bat OU dois niveis
+REM      acima (logica do script original do usuario)
+REM   2) TOKEN NUNCA gravado no .git/config: fetch/push usam a
+REM      URL com token so em memoria; remote origin fica limpo
+REM      (e se uma versao antiga gravou token, ele e removido)
+REM   3) baixa novidades ANTES de empurrar (evita push rejeitado),
+REM      com guard: conteudo identico ao GitHub = alinha
+REM      historico sem perder nada
+REM   4) mensagem de commit lida SEM expansao atrasada (o "!"
+REM      digitado nao e mais comido)
+REM   5) distingue "nada a commitar" de erro real de commit
+REM   6) identidade git local configurada se faltar
 REM ============================================================
+
+set "REPO_LIMPO=https://github.com/junior700/Desktop_Agent_BASE44.git"
 
 cd /d "%~dp0"
 REM raiz adaptativa: se o .git nao esta aqui, procura dois niveis
@@ -22,7 +27,7 @@ if not exist .git (
     if exist "%~dp0..\..\.git" cd /d "%~dp0..\.."
 )
 echo ========================================
-echo   Git Add/Commit/Push Automatico
+echo   Git Add/Commit/Push Automatico (v2)
 echo ========================================
 echo.
 echo Repositorio: %CD%
@@ -33,6 +38,54 @@ if errorlevel 1 (
     echo ERRO: git nao encontrado. Instale em https://git-scm.com
     pause
     exit /b 1
+)
+
+REM --- repositorio local existe? ---
+if not exist .git (
+    git init >nul 2>&1
+    git config core.autocrlf false
+    git branch -M main >nul 2>&1
+    echo Repositorio local criado (branch main).
+)
+git config core.autocrlf false
+
+REM --- identidade local: sem ela o commit falha com erro confuso ---
+set "GEMAIL="
+git config user.email > "%TEMP%\gemail_check.txt" 2>nul
+for /f "usebackq delims=" %%E in ("%TEMP%\gemail_check.txt") do set "GEMAIL=%%E"
+del "%TEMP%\gemail_check.txt" >nul 2>&1
+if not defined GEMAIL (
+    git config user.email "junior700@users.noreply.github.com"
+    git config user.name "junior700"
+    echo Identidade git local configurada (junior700 / noreply).
+)
+
+REM --- remote: SEMPRE limpo (token nunca fica no .git/config) ---
+git remote get-url origin > "%TEMP%\gurl_check.txt" 2>nul
+set "URLREMOTA="
+for /f "usebackq delims=" %%U in ("%TEMP%\gurl_check.txt") do set "URLREMOTA=%%U"
+del "%TEMP%\gurl_check.txt" >nul 2>&1
+if not defined URLREMOTA (
+    git remote add origin "%REPO_LIMPO%"
+) else (
+    echo !URLREMOTA! | findstr /C:"x-access-token" >nul 2>&1
+    if not errorlevel 1 (
+        git remote set-url origin "%REPO_LIMPO%"
+        echo AVISO: havia token gravado no .git/config - removido.
+    )
+)
+
+REM --- token pessoal opcional (arquivo local, nunca versionado) ---
+set "TOKEN="
+if exist token_github.txt (
+    for /f "usebackq delims=" %%T in ("token_github.txt") do set "TOKEN=%%T"
+)
+set "URL_GIT=%REPO_LIMPO%"
+if defined TOKEN (
+    set "URL_GIT=https://x-access-token:!TOKEN!@github.com/junior700/Desktop_Agent_BASE44.git"
+    echo Token pessoal detectado (token_github.txt; usado so em memoria).
+) else (
+    echo Sem token_github.txt - usara a credencial do Windows.
 )
 
 REM --- .gitignore essencial (nunca versiona token/venv/auditoria) ---
@@ -62,35 +115,6 @@ if not exist .gitignore (
 findstr /C:"token_github.txt" .gitignore >nul 2>&1
 if errorlevel 1 echo token_github.txt>> .gitignore
 
-REM --- repositorio local existe? ---
-if not exist .git (
-    git init >nul 2>&1
-    git config core.autocrlf false
-    git branch -M main >nul 2>&1
-    echo Repositorio local criado.
-)
-git config core.autocrlf false
-
-REM --- token pessoal opcional (arquivo local, nunca versionado) ---
-set "TOKEN="
-if exist token_github.txt (
-    for /f "usebackq delims=" %%T in ("token_github.txt") do set "TOKEN=%%T"
-)
-set "REMOTE_URL=https://github.com/junior700/Desktop_Agent_BASE44.git"
-if defined TOKEN (
-    set "REMOTE_URL=https://x-access-token:!TOKEN!@github.com/junior700/Desktop_Agent_BASE44.git"
-    echo Token pessoal detectado - token_github.txt
-) else (
-    echo Sem token_github.txt - usara a credencial do Windows.
-)
-
-git remote get-url origin >nul 2>&1
-if errorlevel 1 (
-    git remote add origin "!REMOTE_URL!"
-) else (
-    git remote set-url origin "!REMOTE_URL!"
-)
-
 echo.
 echo Arquivos modificados/novos:
 echo ----------------------------------------
@@ -110,48 +134,103 @@ echo.
 echo Executando git add...
 git add -A
 
-echo.
+REM --- mensagem: lida SEM expansao atrasada (o caractere ! sai
+REM     intacto; commit logo em seguida, dentro do mesmo bloco) ---
+setlocal DisableDelayedExpansion
 set "MSG="
-set /p MSG="Mensagem de commit (ENTER = 'Atualizar repositorio'): "
+set /p "MSG=Mensagem de commit (ENTER = 'Atualizar repositorio'): "
 if not defined MSG set "MSG=Atualizar repositorio"
+git commit -m "%MSG%" > "%TEMP%\gcommit_out.txt" 2>&1
+set "COMMIT_ERR=%errorlevel%"
+endlocal & set "COMMIT_ERR=%COMMIT_ERR%"
+del "%TEMP%\gcommit_out.txt" >nul 2>&1
 
-echo.
-echo Criando commit...
-git commit -m "!MSG!" >nul 2>&1
-if errorlevel 1 (
-    echo Nada novo para commitar - apenas sincronizando.
+if "%COMMIT_ERR%"=="0" (
+    echo Commit criado.
 ) else (
-    echo Commit criado: !MSG!
+    REM distingue "nada novo" de erro REAL de commit
+    git status --porcelain > "%TEMP%\gpending.txt" 2>nul
+    findstr /R "." "%TEMP%\gpending.txt" >nul 2>&1
+    if not errorlevel 1 (
+        echo.
+        echo ERRO no commit - ainda ha arquivos pendentes:
+        type "%TEMP%\gpending.txt"
+        echo Verifique user.name/user.email com: git config user.email
+        del "%TEMP%\gpending.txt" >nul 2>&1
+        pause
+        exit /b 1
+    )
+    echo Nada novo para commitar - apenas sincronizando.
+    del "%TEMP%\gpending.txt" >nul 2>&1
+)
+
+REM --- upstream: permite git pull/push direto depois ---
+git rev-parse -q --verify main >nul 2>&1
+if not errorlevel 1 (
+    git config branch.main.merge >nul 2>&1
+    if errorlevel 1 (
+        git config branch.main.remote origin
+        git config branch.main.merge refs/heads/main
+    )
 )
 
 REM --- baixa novidades ANTES do push (evita rejeicao) ---
-git fetch origin >nul 2>&1
+REM fetch pela URL (token so em memoria quando existe)
+if defined TOKEN (
+    git fetch --quiet "!URL_GIT!" "+refs/heads/main:refs/remotes/origin/main" >nul 2>&1
+) else (
+    git fetch --quiet origin "+refs/heads/main:refs/remotes/origin/main" >nul 2>&1
+)
+
 git rev-parse -q --verify origin/main >nul 2>&1
 if not errorlevel 1 (
     git rev-parse -q --verify main >nul 2>&1
     if not errorlevel 1 (
-        echo Baixando novidades do GitHub antes de enviar...
-        git merge-base main origin/main >nul 2>&1
+        REM GUARD: conteudo (index) identico ao GitHub?
+        REM exit 0 = arvores iguais -> alinha historico, nada se perde
+        git diff --cached --quiet origin/main >nul 2>&1
         if not errorlevel 1 (
-            git pull --rebase origin main >nul 2>&1
+            git reset --hard origin/main >nul 2>&1
+            echo Conteudo identico ao GitHub - historico alinhado.
         ) else (
-            git pull --rebase -X theirs origin main >nul 2>&1
-        )
-        if errorlevel 1 (
-            echo.
-            echo CONFLITO ao baixar. Rebase cancelado - nada foi perdido.
-            git rebase --abort >nul 2>&1
-            echo Resolva com sincronizar_github.ps1 opcao 2 ou manualmente.
-            pause
-            exit /b 1
+            REM o GitHub tem commits que faltam aqui?
+            set "ATRASADO=0"
+            for /f "delims=" %%C in ('git rev-list --count main..origin/main 2^>nul') do set "ATRASADO=%%C"
+            if !ATRASADO! GTR 0 (
+                echo Baixando novidades do GitHub antes de enviar...
+                git merge-base main origin/main >nul 2>&1
+                if not errorlevel 1 (
+                    git pull --rebase origin main >nul 2>&1
+                ) else (
+                    git pull --rebase -X theirs origin main >nul 2>&1
+                )
+                if errorlevel 1 (
+                    echo.
+                    echo CONFLITO ao baixar. Rebase cancelado - nada foi perdido.
+                    git rebase --abort >nul 2>&1
+                    echo Resolva com sincronizar_github.ps1 opcao 2 ou manualmente.
+                    pause
+                    exit /b 1
+                )
+            )
         )
     )
+)
+
+REM --- o que enviar? ---
+set "NAFRENTE=0"
+for /f "delims=" %%C in ('git rev-list --count origin/main..main 2^>nul') do set "NAFRENTE=%%C"
+if !NAFRENTE! EQU 0 (
+    echo.
+    echo Nada a enviar - pasta e GitHub ja sincronizados.
+    pause
+    exit /b 0
 )
 
 echo.
 echo Fazendo push...
 set "SAIDA=%TEMP%\git_push_saida.txt"
-git push -u origin main > "%SAIDA%" 2>&1
+git push "!URL_GIT!" "main:refs/heads/main" > "%SAIDA%" 2>&1
 if errorlevel 1 (
     echo.
     echo ========================================

@@ -105,6 +105,24 @@ gerado em github.com/settings/tokens (escopo `repo`). O script usa esse
 token automaticamente. O arquivo fica fora do git (.gitignore) e nunca é
 enviado ao repositório.
 
+### Como o token é tratado (v4)
+
+O token **nunca é gravado no `.git/config`**: as operações de rede
+(fetch/push) usam a URL com token apenas em memória; o remote `origin`
+fica sempre com a URL limpa. Se uma versão antiga do script gravou o
+token no `.git/config`, a execução nova detecta e remove. Detalhes de
+robustez dos scripts de sincronização:
+
+- fetch **único** por execução (a opção 3 não baixa duas vezes)
+- a opção 3 só envia se o download terminar sem erro
+- se o conteúdo da pasta for idêntico ao do GitHub, o histórico é
+  alinhado com `reset --hard` sem perda de arquivos
+- `.gitignore` gravado sem BOM (o BOM quebrava a primeira regra)
+- identidade git local configurada automaticamente se faltar
+  (evita o erro "Please tell me who you are")
+- no `.bat`, a mensagem de commit aceita `!` sem ser comida e o
+  script distingue "nada a commitar" de erro real de commit
+
 ## Regras de ouro
 
 1. O agente **sempre inicia em dry-run**. Modo real exige confirmação explícita.
