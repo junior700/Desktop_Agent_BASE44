@@ -90,12 +90,31 @@ conflito. Repositório criado no site do GitHub (com README inicial) é
 detectado automaticamente: na primeira sincronização o rebase mantém os
 arquivos do projeto na frente do stub do site. Requisito: git instalado (https://git-scm.com).
 
-### publicar_github.bat — add/commit/push com um clique
+### publicar_github.exe — add/commit/push com um clique
 
-Na raiz do projeto, rode `publicar_github.bat`: mostra o que mudou,
-pede confirmação, cria o commit com sua mensagem, baixa as novidades
-do GitHub antes de empurrar (evita push rejeitado) e envia. Usa o
-`token_github.txt` automaticamente quando existir.
+O fonte vive como **`restrict\publicar_github.bin`** (extensão falsa:
+guardado e versionado sem ser tratado como executável). Para gerar o
+**`publicar_github.exe`** na raiz do projeto:
+
+- opção `[8]` do menu (`agente.ps1`), ou
+- `powershell -ExecutionPolicy Bypass -File .\restrict\gerar_exe.ps1`
+
+O builder usa o **IExpress**, nativo do Windows (nada a instalar): o
+`.bat` real só existe no `%TEMP%` durante o build e é apagado no fim.
+O `.exe` mostra o que mudou, pede confirmação, cria o commit com sua
+mensagem, baixa as novidades antes de empurrar e envia — usa
+`token_github.txt` automaticamente quando existir, e nunca grava o
+token no `.git/config`. Rodando como `.exe`, ele acha a pasta do
+projeto pela pasta onde foi clicado (e aborta com aviso se executado
+fora do projeto, em vez de criar repositório no TEMP).
+
+**Aviso honesto de antivírus:** o `.exe` gerado não é assinado; o
+SmartScreen pode avisar "app não reconhecido" na primeira execução
+("Mais informações" → "Executar assim mesmo"). Se preferir zero
+atrito, use o `.ps1` (opção `[7]`) — o `.exe` faz exatamente o que o
+`.bin` diz, nada mais.
+
+Para usar o fonte como `.bat` cru: copie o `.bin` para `.bat` e rode.
 
 ### Autenticar com token pessoal (recomendado)
 

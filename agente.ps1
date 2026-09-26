@@ -22,7 +22,8 @@ function Menu {
     Write-Host "  [4] Executar roteiro (REAL - controla mouse/teclado)"
     Write-Host "  [5] Gravar cliques humanos (Human Recorder)"
     Write-Host "  [6] Abrir dashboard"
-    Write-Host "  [7] Sincronizar com GitHub (ps1) | publicar_github.bat"
+    Write-Host "  [7] Sincronizar com GitHub (sincronizar_github.ps1)"
+    Write-Host "  [8] Gerar publicar_github.exe (fonte .bin em restrict\)"
     Write-Host "  [0] Sair`n"
 }
 
@@ -110,6 +111,10 @@ function Escolher-Saida-Gravacao {
         "7" {
             # Sincroniza a pasta raiz do projeto com o GitHub
             & powershell -ExecutionPolicy Bypass -File (Join-Path $Proj "sincronizar_github.ps1")
+        }
+        "8" {
+            # Gera publicar_github.exe a partir do fonte .bin (IExpress nativo)
+            & powershell -ExecutionPolicy Bypass -File (Join-Path $Proj "restrict\gerar_exe.ps1")
         }
         "0" { break }
     }
