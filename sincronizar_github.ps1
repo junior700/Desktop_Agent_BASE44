@@ -60,6 +60,8 @@ Set-Location $script:Raiz
 # --- git instalado? ---
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     Write-Host "ERRO: git nao encontrado. Instale em https://git-scm.com" -ForegroundColor Red
+    # pausa ANTES do exit: sem ela a mensagem pisca e a janela fecha
+    Read-Host "Pressione ENTER para fechar" | Out-Null
     exit 1
 }
 

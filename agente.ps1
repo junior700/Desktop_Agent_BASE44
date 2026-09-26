@@ -54,7 +54,11 @@ function Escolher-Saida-Gravacao {
     return $null
 }
 
-:loop while ($true) {
+# NAO usar 'break' dentro do switch: no PowerShell o break e consumido
+# pelo switch (nao pelo while) — "0 Sair" so redesenhava o menu.
+# Saida controlada por flag.
+$sair = $false
+while (-not $sair) {
     Menu
     $op = Read-Host "Escolha"
     switch ($op) {
@@ -119,6 +123,12 @@ function Escolher-Saida-Gravacao {
             & powershell -ExecutionPolicy Bypass -File (Join-Path $Proj "restrict\gerar_exe.ps1")
             Pause
         }
-        "0" { break }
+        "0" { $sair = $true }
+        default {
+            if ($op) {
+                Write-Host "Opcao invalida: '$op'" -ForegroundColor Yellow
+                Pause
+            }
+        }
     }
 }
