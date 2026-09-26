@@ -1,13 +1,13 @@
 """
-main.py — CLI do agente de desktop.
+main.py - CLI do agente de desktop.
 
 Uso:
-    python main.py roteiro.json            # dry-run (simula, não toca em nada)
-    python main.py roteiro.json --real    # execução REAL (mouse/teclado)
+    python main.py roteiro.json            # dry-run (simula, nao toca em nada)
+    python main.py roteiro.json --real    # execucao REAL (mouse/teclado)
     python main.py --gravar saida.json    # Human Recorder (F12 encerra)
     python main.py --dashboard            # abre o painel Tkinter
 
---real exige confirmação no terminal antes de começar.
+--real exige confirmacao no terminal antes de comecar.
 ESC 3x interrompe tudo a qualquer momento.
 """
 
@@ -32,7 +32,7 @@ from agent.runtime import montar_stack
 
 
 def confirmar_terminal(ac):
-    """Confirmação de ação sensível no CLI (s/N)."""
+    """Confirmacao de acao sensivel no CLI (s/N)."""
     print(f"\n*** ACAO SENSIVEL: {ac.get('tipo')} ***")
     print(f"    {ac}")
     resp = input("    Aprovar? [s/N] ").strip().lower()
@@ -64,13 +64,13 @@ def cmd_gravar(saida: str | None) -> None:
         sys.exit(1)
     import time as _time
     try:
-        while not rec.is_stopped and not emergencia.triggered:
+        while not rec.is_stopped and not emergencia.is_triggered():
             _time.sleep(0.1)
     except KeyboardInterrupt:
         pass
     rec.stop()  # sempre restaura a janela ao encerrar
     if rec.save_script(saida) is None:
-        print("0 cliques gravados — roteiro vazio NAO foi salvo.")
+        print("0 cliques gravados - roteiro vazio NAO foi salvo.")
     else:
         print(f"Roteiro salvo em: {saida} ({rec.click_count()} cliques)")
 
@@ -98,7 +98,7 @@ def main():
 
     if not args.roteiro:
         # Sem caminho na linha de comando: abre a janela NATIVA do Windows,
-        # já apontada para a pasta scripts\ do projeto.
+        # ja apontada para a pasta scripts\ do projeto.
         from agent.ui.native_dialogs import selecionar_arquivo
         escolhido = selecionar_arquivo(pasta="scripts")
         if not escolhido:

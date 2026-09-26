@@ -18,6 +18,7 @@ TESTES = [
     "test_vision.py",
     "test_dashboard_ui.py",
     "test_menu_agente.py",
+    "test_menu_paths.py",
     "test_sed_gerar_exe.py",
     "test_sincronizar_token.py",
     "test_stack.py",
