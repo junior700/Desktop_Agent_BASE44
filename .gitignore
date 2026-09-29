@@ -1,0 +1,12 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+agent_audit.db
+capturas/
+logs/
+*.log
+.env
+Obsoleto/
+token_github.txt
+token_github*.txt
