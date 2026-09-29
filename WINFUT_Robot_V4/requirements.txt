@@ -1,8 +1,0 @@
-# WINFUT Paper Trading Bot v4 — dependências (versões validadas em 28/09/2026)
-# Instalação:  python -m pip install -r requirements.txt
-pandas==2.3.3
-numpy==2.4.6
-pyarrow==25.0.1          # leitura/escrita dos parquet em data/
-websocket-client==1.9.2  # coletor TradingView (tv_ws_fetch.py)
-matplotlib==3.11.2       # gráficos da engine de backtest
-requests==2.34.2         # probes de fontes alternativas (opcional)
